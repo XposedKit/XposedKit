@@ -1,7 +1,0 @@
-# Gradle files
-build/
-
-# Android Studio generated files and folders
-captures/
-.externalNativeBuild/
-.cxx/

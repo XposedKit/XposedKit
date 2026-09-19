@@ -1,5 +1,0 @@
-plugin.name=XposedKit 扩展
-plugin.description=提供关于 XposedKit 的扩展功能
-
-popup.copy-reflect=复制 XposedKit 反射代码
-shortcut.copy-reflect=复制反射代码快捷键

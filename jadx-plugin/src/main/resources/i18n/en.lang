@@ -1,5 +1,0 @@
-plugin.name=XposedKit Extension
-plugin.description=Provides extension features for XposedKit
-
-popup.copy-reflect=Copy XposedKit reflection code
-shortcut.copy-reflect=Shortcut for copying reflection code

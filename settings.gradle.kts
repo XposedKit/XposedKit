@@ -25,12 +25,10 @@ include(
     ":xposedkit",
     ":xposedkit-gradle-plugin",
     ":xposedkit-hidden-api",
-    ":xposedkit-jadx-plugin",
     ":xposedkit-native",
     ":xposedkit-processor"
 )
 project(":xposedkit-gradle-plugin").projectDir = file("gradle-plugin")
 project(":xposedkit-hidden-api").projectDir = file("hidden-api")
-project(":xposedkit-jadx-plugin").projectDir = file("jadx-plugin")
 project(":xposedkit-native").projectDir = file("native")
 project(":xposedkit-processor").projectDir = file("processor")
