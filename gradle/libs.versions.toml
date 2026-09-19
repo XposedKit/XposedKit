@@ -2,7 +2,7 @@
 agp = "9.2.1"
 annotation = "1.10.0"
 hiddenapiBypass = "6.1"
-kotlin = "2.3.0"
+kotlin = "2.4.20"
 ksp = "2.3.12"
 xposed = "82"
 lsposed = "102.0.0"
