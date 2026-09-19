@@ -20,7 +20,7 @@ class XposedKitPlugin : Plugin<Project> {
         plugins.apply(KSP_PLUGIN_ID)
 
         val dependencies = target.dependencies
-        dependencies.add("implementation", "cc.meteormc:xposedkit:1.0.0")
+        dependencies.add("implementation", "cc.meteormc:core:1.0.0")
         dependencies.add("ksp", "cc.meteormc:xposedkit-processor:1.0.0")
 
         val tasks = target.tasks
