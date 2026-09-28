@@ -1,6 +1,6 @@
 [versions]
 agp = "9.2.1"
-annotation = "1.10.0"
+annotation = "1.11.0"
 hiddenapiBypass = "6.1"
 kotlin = "2.3.0"
 ksp = "2.3.12"
