@@ -20,6 +20,7 @@ class AnnotationProcessor(
 
         private const val METADATA_OUTPUT_OPTION = "metadataOutput"
 
+        private const val ACTIVITY_CLASS_NAME = "android.app.Activity"
         private const val XPOSED_MODULE_CLASS_NAME = "cc.meteormc.xposedkit.XposedModule"
         private const val MODULE_REGISTER_CLASS_NAME = "cc.meteormc.xposedkit.annotation.ModuleRegister"
         private const val MODULE_SETTINGS_ACTIVITY_CLASS_NAME = "cc.meteormc.xposedkit.annotation.ModuleSettingsActivity"
@@ -54,6 +55,13 @@ class AnnotationProcessor(
     private fun processModuleAnnotation(metadata: Properties) {
         logger.info("processModuleAnnotation: $moduleClasses")
 
+        moduleClasses.removeAll {
+            it.isSubclassOf(XPOSED_MODULE_CLASS_NAME).apply {
+                if (this) return@apply
+                logger.warn("Class ${it.qualifiedName?.asString()} is annotated with @ModuleRegister but does not implement $XPOSED_MODULE_CLASS_NAME, ignoring it")
+            }
+        }
+
         if (moduleClasses.isEmpty()) {
             throw NoSuchElementException("No @ModuleRegister annotation found! Please annotate your module class with @ModuleRegister")
         }
@@ -85,7 +93,22 @@ class AnnotationProcessor(
     private fun processSettingsActivityAnnotation(metadata: Properties) {
         logger.info("processSettingsActivityAnnotation: $settingsActivityClasses")
 
-        val settingsActivity = settingsActivityClasses.firstOrNull() ?: return
+        val settingsActivity = settingsActivityClasses.firstOrNull { it.isSubclassOf(ACTIVITY_CLASS_NAME) } ?: return
         metadata["settingsActivity"] = settingsActivity.qualifiedName!!.asString()
+    }
+
+    fun KSClassDeclaration.isSubclassOf(
+        target: String,
+        visited: MutableSet<String> = mutableSetOf()
+    ): Boolean {
+        val currentName = qualifiedName?.asString() ?: return false
+        if (!visited.add(currentName)) return false
+        return superTypes.any { superType ->
+            val parent = superType.resolve()
+                .declaration as? KSClassDeclaration
+                ?: return@any false
+            val parentName = parent.qualifiedName?.asString()
+            parentName == target || parent.isSubclassOf(target, visited)
+        }
     }
 }
