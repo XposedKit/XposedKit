@@ -16,11 +16,11 @@ class InvokeInfo(
     result: Any?,
     val exception: Throwable?
 ) {
-    internal var hasChanged = false
+    internal var cancelled = false
     var result = result
         set(value) {
+            this.cancel()
             field = value
-            hasChanged = true
         }
 
     fun <T> instance() = this.instance as T
@@ -70,7 +70,7 @@ class InvokeInfo(
     fun <T : Throwable?> exception() = this.exception as T
 
     fun cancel() {
-        result = null
+        cancelled = true
     }
 
     fun <T> callSuper(): T {
@@ -120,6 +120,6 @@ class InvokeInfo(
     override fun hashCode() = this.member.hashCode()
 
     override fun toString(): String {
-        return "InvokeInfo(member=$member, instance=$instance, args=${args.contentToString()}, result=$result, exception=$exception, hasChanged=$hasChanged)"
+        return "InvokeInfo(member=$member, instance=$instance, args=${args.contentToString()}, result=$result, exception=$exception, cancelled=$cancelled)"
     }
 }

@@ -64,7 +64,7 @@ object XposedKit {
         }
     }
 
-    internal fun <T> mount(block: XposedModule.() -> T): T {
+    internal fun <T> withModule(block: XposedModule.() -> T): T {
         return block(moduleInstance)
     }
 

@@ -110,19 +110,7 @@ class LSPosed : XposedInterface, LSPModule() {
         }
 
         val hooker = InterceptHooker(type, callback)
-        var normalizedPriority = priority
-        if (priority in -PRIORITY_DEFAULT..PRIORITY_DEFAULT) {
-            normalizedPriority = PRIORITY_DEFAULT
-        }
-        if (type == HookType.AFTER) {
-            normalizedPriority = when (normalizedPriority) {
-                Int.MIN_VALUE -> Int.MAX_VALUE
-                Int.MAX_VALUE -> Int.MIN_VALUE
-                else -> -normalizedPriority
-            }
-        }
-
-        val identifier = HookIdentifier(type, normalizedPriority)
+        val identifier = HookIdentifier(type, priority)
         if (isHotReloading) {
             // 当热重载时 如果存在与之前相同参数的HookHandle
             // 则可以认为它们是同一个钩子（哪怕实际上可能不是同一个）
@@ -159,17 +147,20 @@ class LSPosed : XposedInterface, LSPModule() {
         callback: InvokeCallback
     ): HookHandle {
         val hooker = InterceptHooker(type, callback, true)
-        val handle = if (isHotReloading) {
-            previousHookHandles.entries
+        var handle: LSPInterface.HookHandle? = null
+        if (isHotReloading) {
+            handle = previousHookHandles.entries
                 .firstOrNull { (key, _) -> key.name == "<clinit>" && key.declaringClass == clazz }
                 ?.value
                 ?.removeLastOrNull()
                 ?.replaceHook(hooker)
-        } else {
-            null
-        } ?: hookClassInitializer(clazz)
-            .setExceptionMode(LSPInterface.ExceptionMode.PASSTHROUGH)
-            .intercept(hooker)
+        }
+
+        if (handle == null) {
+            handle = hookClassInitializer(clazz)
+                .setExceptionMode(LSPInterface.ExceptionMode.PASSTHROUGH)
+                .intercept(hooker)
+        }
 
         return HookHandle(
             handle.executable,
@@ -221,7 +212,7 @@ class LSPosed : XposedInterface, LSPModule() {
 
         processName = param.processName
         val processParam = ProcessLoadedParam(processName, param.isSystemServer)
-        XposedKit.mount { onProcessLoaded(processParam) }
+        XposedKit.withModule { onProcessLoaded(processParam) }
     }
 
     @Keep
@@ -235,7 +226,7 @@ class LSPosed : XposedInterface, LSPModule() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) param.appComponentFactory else null,
             param.isFirstPackage
         )
-        XposedKit.mount { onPackageLoaded(packageParam) }
+        XposedKit.withModule { onPackageLoaded(packageParam) }
         registerRuntimePackage(
             param.packageName,
             param.classLoader,
@@ -248,7 +239,7 @@ class LSPosed : XposedInterface, LSPModule() {
     override fun onSystemServerStarting(param: LSPLifecycle.SystemServerStartingParam) {
         XLog.v(TAG, "System server starting")
         val systemParam = SystemServerStartingParam(param.classLoader)
-        XposedKit.mount { onSystemServerStarting(systemParam) }
+        XposedKit.withModule { onSystemServerStarting(systemParam) }
         systemServerClassLoader = param.classLoader
     }
 
@@ -260,7 +251,7 @@ class LSPosed : XposedInterface, LSPModule() {
             param.extras,
             null
         )
-        if (!XposedKit.mount { onHotReloading(reloadParam) }) {
+        if (!XposedKit.withModule { onHotReloading(reloadParam) }) {
             return false
         }
 
@@ -320,7 +311,7 @@ class LSPosed : XposedInterface, LSPModule() {
         previousHookHandles.putAll(oldHookHandles.groupBy { it.executable }.mapValues { it.value.toMutableList() })
 
         XposedKit.prepare()
-        XposedKit.mount {
+        XposedKit.withModule {
             val param = ProcessLoadedParam(
                 processName,
                 param.isSystemServer,
@@ -352,7 +343,7 @@ class LSPosed : XposedInterface, LSPModule() {
                 isFirstPackage
             )
 
-            XposedKit.mount {
+            XposedKit.withModule {
                 val param = PackageLoadedParam(
                     processName,
                     packageName,
@@ -368,7 +359,7 @@ class LSPosed : XposedInterface, LSPModule() {
         if (systemServerClassLoader != null) {
             XLog.v(TAG, "Loading new hooks for system server")
             this.systemServerClassLoader = systemServerClassLoader
-            XposedKit.mount {
+            XposedKit.withModule {
                 val param = SystemServerStartingParam(systemServerClassLoader)
                 onSystemServerStarting(param)
             }
@@ -422,7 +413,7 @@ class LSPosed : XposedInterface, LSPModule() {
                     callback(info)
                     if (info.exception != null) {
                         throw info.exception
-                    } else if (!ignoreResult && info.hasChanged) {
+                    } else if (!ignoreResult && info.cancelled) {
                         info.result
                     } else {
                         chain.proceed(args)

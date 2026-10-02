@@ -29,7 +29,6 @@ import java.lang.reflect.Constructor
 import java.lang.reflect.Member
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
-import java.util.concurrent.CopyOnWriteArrayList
 
 class Xposed : XposedInterface, IXposedHookZygoteInit, IXposedHookLoadPackage {
     init {
@@ -55,48 +54,6 @@ class Xposed : XposedInterface, IXposedHookZygoteInit, IXposedHookLoadPackage {
         private set
     override val moduleAppInfo: ApplicationInfo
         get() = XposedKit.modulePackageInfo.applicationInfo
-
-    private data class HookedMember(
-        val member: Member,
-        val unhook: XC_MethodHook.Unhook,
-        val handles: MutableList<HookHandle>
-    )
-
-    private val hookedMembers = HashMap<Member, HookedMember>()
-    private val xcallback = object : XC_MethodHook() {
-        @Keep
-        override fun beforeHookedMethod(param: MethodHookParam) {
-            runCallback(HookType.BEFORE, param)
-        }
-
-        @Keep
-        override fun afterHookedMethod(param: MethodHookParam) {
-            runCallback(HookType.AFTER, param)
-        }
-
-        private fun runCallback(type: HookType, param: MethodHookParam) {
-            val member = param.method
-            val target = hookedMembers[member] ?: return
-            val info = InvokeInfo(
-                member,
-                param.thisObject,
-                param.args,
-                param.result,
-                param.throwable
-            )
-            runCatching {
-                for (handle in target.handles) {
-                    if (handle.type != type) continue
-                    handle.callback(info)
-                }
-            }.onFailure {
-                param.throwable = it
-            }
-            if (info.hasChanged) {
-                param.result = info.result
-            }
-        }
-    }
 
     override fun deoptimize(member: Member): Boolean {
         if (Modifier.isNative(member.modifiers)) {
@@ -124,32 +81,19 @@ class Xposed : XposedInterface, IXposedHookZygoteInit, IXposedHookLoadPackage {
         priority: Int,
         callback: InvokeCallback
     ): HookHandle {
-        val target = hookedMembers.getOrPut(member) {
-            HookedMember(
-                member,
-                XposedBridge.hookMethod(member, xcallback),
-                CopyOnWriteArrayList()
-            )
-        }
+        val unhook = XposedBridge.hookMethod(
+            member,
+            MethodHook(priority, type, callback)
+        )
 
-        val handle = HookHandle(
+        return HookHandle(
             member,
             type,
             priority,
             callback
         ) {
-            val handles = target.handles
-            handles.removeIf { it.callback == callback }
-             if (handles.isEmpty()) {
-                 hookedMembers.remove(member)
-                  target.unhook.unhook()
-             }
+            unhook.unhook()
         }
-
-        val handles = target.handles
-        val insertIndex = handles.indexOfFirst { it.priority < priority }.takeIf { it >= 0 } ?: handles.size
-        handles.add(insertIndex, handle)
-        return handle
     }
 
     override fun hookClassInitializer(
@@ -157,8 +101,7 @@ class Xposed : XposedInterface, IXposedHookZygoteInit, IXposedHookLoadPackage {
         type: HookType,
         callback: InvokeCallback
     ): HookHandle {
-        val clinit = NativeBridge.FindClassInitializer(clazz)
-        val fakeMember = object : Member {
+        class ClassInitializer : Member {
             override fun getDeclaringClass() = clazz
 
             override fun getModifiers() = 0x0
@@ -167,25 +110,13 @@ class Xposed : XposedInterface, IXposedHookZygoteInit, IXposedHookLoadPackage {
 
             override fun isSynthetic() = false
         }
-        val unhook = XposedBridge.hookMethod(clinit, object : XC_MethodHook() {
-            private val info = InvokeInfo(fakeMember, null, emptyArray(), null, null)
 
-            override fun beforeHookedMethod(param: MethodHookParam) {
-                if (type != HookType.BEFORE) return
-                callback(info)
-            }
-
-            override fun afterHookedMethod(param: MethodHookParam) {
-                if (type != HookType.AFTER) return
-                callback(info)
-            }
-        })
-        return HookHandle(
-            fakeMember,
+        return hook(
+            NativeBridge.FindClassInitializer(clazz),
             type,
             InvokeCallback.PRIORITY_NORMAL,
             callback
-        ) { unhook.unhook() }
+        ).copy(member = ClassInitializer())
     }
 
     override fun invokeOriginal(member: Member, obj: Any?, vararg args: Any?): Any? {
@@ -258,6 +189,7 @@ class Xposed : XposedInterface, IXposedHookZygoteInit, IXposedHookLoadPackage {
         XposedBridge.log(formated)
     }
 
+    @Keep
     override fun initZygote(param: IXposedHookZygoteInit.StartupParam) {
         XLog.v(TAG, "Zygote initialized: modulePath=${param.modulePath}")
         moduleSource = param.modulePath
@@ -276,7 +208,7 @@ class Xposed : XposedInterface, IXposedHookZygoteInit, IXposedHookLoadPackage {
             XLog.v(TAG, "The process is system_server, calling onSystemServerStarting only")
             val processParam = ProcessLoadedParam(param.processName, true)
             val systemParam = SystemServerStartingParam(param.classLoader)
-            XposedKit.mount {
+            XposedKit.withModule {
                 onProcessLoaded(processParam)
                 onSystemServerStarting(systemParam)
             }
@@ -287,7 +219,7 @@ class Xposed : XposedInterface, IXposedHookZygoteInit, IXposedHookLoadPackage {
             XLog.v(TAG, "The process is first application, means its a newly started process, calling onProcessLoaded")
             XposedKit.prepare()
             val processParam = ProcessLoadedParam(param.processName, false)
-            XposedKit.mount { onProcessLoaded(processParam) }
+            XposedKit.withModule { onProcessLoaded(processParam) }
         }
 
         val packageParam = PackageLoadedParam(
@@ -298,6 +230,41 @@ class Xposed : XposedInterface, IXposedHookZygoteInit, IXposedHookLoadPackage {
             null,
             param.isFirstApplication
         )
-        XposedKit.mount { onPackageLoaded(packageParam) }
+        XposedKit.withModule { onPackageLoaded(packageParam) }
+    }
+
+    private class MethodHook(
+        priority: Int,
+        private val type: HookType,
+        private val callback: InvokeCallback
+    ) : XC_MethodHook(priority) {
+        @Keep
+        override fun beforeHookedMethod(param: MethodHookParam) {
+            if (type != HookType.BEFORE) return
+            executeCallback(param)
+        }
+
+        @Keep
+        override fun afterHookedMethod(param: MethodHookParam) {
+            if (type != HookType.AFTER) return
+            executeCallback(param)
+        }
+
+        private fun executeCallback(param: MethodHookParam) {
+            val info = InvokeInfo(
+                param.method,
+                param.thisObject,
+                param.args,
+                param.result,
+                param.throwable
+            )
+            runCatching { callback(info) }.onFailure {
+                param.throwable = it
+                return
+            }
+            if (info.cancelled) {
+                param.result = info.result
+            }
+        }
     }
 }
