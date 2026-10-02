@@ -10,6 +10,7 @@ import android.content.res.Resources
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.DisplayMetrics
+import cc.meteormc.xposedkit.engine.Engine
 import cc.meteormc.xposedkit.hook.HookType
 import cc.meteormc.xposedkit.hook.InvokeCallback
 import cc.meteormc.xposedkit.nativelib.NativeBridge
@@ -26,13 +27,13 @@ object XposedKit {
     const val PROP_CAP_REMOTE = 1L shl 1
     const val PROP_API_PROTECTION = 1L shl 2
 
-    internal lateinit var impl: XposedInterface
+    internal lateinit var engine: Engine
     internal val attachedApplications = WeakHashMap<String, Application>()
     private val appAttachListeners = ConcurrentHashMap<String, MutableSet<(Application) -> Unit>>()
 
-    internal fun init(impl: XposedInterface) {
-        this.impl = impl
-        XLog.d(TAG, "Initializing XposedKit with implementation: ${impl::class.java.name}")
+    internal fun init(engine: Engine) {
+        this.engine = engine
+        XLog.d(TAG, "Initializing XposedKit with engine: ${engine::class.java.name}")
         if (NativeBridge.isLoaded) {
             NativeBridge.Init()
         } else {
@@ -47,7 +48,7 @@ object XposedKit {
     }
 
     internal fun prepare() {
-        impl.hook(
+        engine.hook(
             Application::class.reflect.method("attach")!!,
             HookType.AFTER,
             InvokeCallback.PRIORITY_HIGHEST
@@ -69,28 +70,28 @@ object XposedKit {
     }
 
     val available
-        get() = ::impl.isInitialized
+        get() = ::engine.isInitialized
 
     val apiVersion
-        get() = impl.apiVer
+        get() = engine.apiVer
 
     val frameworkName
-        get() = impl.frameworkLabel
+        get() = engine.frameworkLabel
 
     val frameworkVersion
-        get() = impl.frameworkVer
+        get() = engine.frameworkVer
 
     val frameworkVersionCode
-        get() = impl.frameworkVerCode
+        get() = engine.frameworkVerCode
 
     val frameworkProperties
-        get() = impl.frameworkProp
+        get() = engine.frameworkProp
 
     val moduleSource
-        get() = impl.moduleSource
+        get() = engine.moduleSource
 
     val moduleAppInfo
-        get() = impl.moduleAppInfo
+        get() = engine.moduleAppInfo
 
     val moduleActivities
         get() = modulePackageInfo.activities.map { it.info }
@@ -163,7 +164,7 @@ object XposedKit {
     val remotePreferences by lazy {
         object : RemotePreferencesProvider {
             override fun get(name: String): SharedPreferences {
-                return impl.getRemotePrefs(name)
+                return engine.getRemotePrefs(name)
             }
         }
     }
@@ -171,11 +172,11 @@ object XposedKit {
     val remoteFile by lazy {
         object : RemoteFileProvider {
             override fun get(name: String): ParcelFileDescriptor {
-                return impl.getRemoteFile(name)
+                return engine.getRemoteFile(name)
             }
 
             override fun files(): List<String> {
-                return impl.getRemoteFiles()
+                return engine.getRemoteFiles()
             }
         }
     }

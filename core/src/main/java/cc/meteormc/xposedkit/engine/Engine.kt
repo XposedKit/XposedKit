@@ -1,14 +1,15 @@
-package cc.meteormc.xposedkit
+package cc.meteormc.xposedkit.engine
 
 import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
 import android.os.ParcelFileDescriptor
+import cc.meteormc.xposedkit.XLog
 import cc.meteormc.xposedkit.hook.HookHandle
 import cc.meteormc.xposedkit.hook.HookType
 import cc.meteormc.xposedkit.hook.InvokeCallback
 import java.lang.reflect.Member
 
-internal interface XposedInterface {
+internal interface Engine {
     val apiVer: Int
 
     val frameworkLabel: String

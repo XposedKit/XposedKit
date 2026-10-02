@@ -13,7 +13,7 @@ import kotlin.contracts.contract
 
 open class HookerContext(
     open val classLoader: ClassLoader,
-    protected val handles: MutableMap<Member, MutableList<HookHandle>> = mutableMapOf()
+    protected val handles: MutableList<HookHandle> = mutableListOf()
 ) {
     inline val String.clazz: Class<*>?
         get() = reflect?.type
@@ -34,12 +34,6 @@ open class HookerContext(
         return classLoader.typedReflect(this, block)
     }
 
-    fun Member.hook(type: HookType, priority: Int = InvokeCallback.PRIORITY_NORMAL, callback: InvokeCallback): HookHandle {
-        val handle = XposedKit.impl.hook(this, type, priority, callback)
-        handles.getOrPut(this) { mutableListOf() } += handle
-        return handle
-    }
-
     fun Member.hookBefore(priority: Int = InvokeCallback.PRIORITY_NORMAL, callback: InvokeCallback): HookHandle {
         return hook(HookType.BEFORE, priority, callback)
     }
@@ -48,20 +42,12 @@ open class HookerContext(
         return hook(HookType.AFTER, priority, callback)
     }
 
-    fun <T : Iterable<Member>> T.hook(type: HookType, callback: InvokeCallback): List<HookHandle> {
-        return map { it.hook(type, InvokeCallback.PRIORITY_NORMAL, callback) }
-    }
-
     fun <T : Iterable<Member>> T.hookBefore(callback: InvokeCallback): List<HookHandle> {
-        return hook(HookType.BEFORE, callback)
+        return map { it.hookBefore(callback = callback) }
     }
 
     fun <T : Iterable<Member>> T.hookAfter(callback: InvokeCallback): List<HookHandle> {
-        return hook(HookType.AFTER, callback)
-    }
-
-    fun Class<*>.hookClinit(type: HookType, callback: InvokeCallback): HookHandle {
-        return XposedKit.impl.hookClassInitializer(this, type, callback)
+        return map { it.hookAfter(callback = callback) }
     }
 
     fun Class<*>.hookClinitBefore(callback: InvokeCallback): HookHandle {
@@ -70,5 +56,26 @@ open class HookerContext(
 
     fun Class<*>.hookClinitAfter(callback: InvokeCallback): HookHandle {
         return hookClinit(HookType.AFTER, callback)
+    }
+
+    private fun Member.hook(type: HookType, priority: Int = InvokeCallback.PRIORITY_NORMAL, callback: InvokeCallback): HookHandle {
+        return XposedKit.engine.hook(
+            this,
+            type,
+            priority,
+            callback
+        ).apply {
+            handles += this
+        }
+    }
+
+    private fun Class<*>.hookClinit(type: HookType, callback: InvokeCallback): HookHandle {
+        return XposedKit.engine.hookClassInitializer(
+            this,
+            type,
+            callback
+        ).apply {
+            handles += this
+        }
     }
 }

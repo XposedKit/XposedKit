@@ -1,5 +1,5 @@
--keepnames class cc.meteormc.xposedkit.impl.**
--keep,allowoptimization,allowobfuscation class cc.meteormc.xposedkit.impl.** { *; }
+-keepnames class cc.meteormc.xposedkit.engine.**
+-keep,allowoptimization,allowobfuscation class cc.meteormc.xposedkit.engine.** { *; }
 -keep,allowoptimization,allowobfuscation class * extends cc.meteormc.xposedkit.XposedModule { *; }
 
 -dontwarn android.app.AndroidAppHelper

@@ -1,4 +1,4 @@
-package cc.meteormc.xposedkit.impl
+package cc.meteormc.xposedkit.engine
 
 import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
@@ -6,7 +6,6 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.annotation.Keep
 import cc.meteormc.xposedkit.XLog
-import cc.meteormc.xposedkit.XposedInterface
 import cc.meteormc.xposedkit.XposedKit
 import cc.meteormc.xposedkit.XposedKit.TAG
 import cc.meteormc.xposedkit.hook.HookHandle
@@ -30,7 +29,7 @@ import java.lang.reflect.Member
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 
-class Xposed : XposedInterface, IXposedHookZygoteInit, IXposedHookLoadPackage {
+class Xposed : Engine, IXposedHookZygoteInit, IXposedHookLoadPackage {
     init {
         XposedKit.init(this)
     }

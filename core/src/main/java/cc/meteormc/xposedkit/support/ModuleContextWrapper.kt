@@ -105,7 +105,7 @@ open class ModuleContextWrapper(
     }
 
     override fun getClassLoader(): ClassLoader {
-        return XposedKit.impl.javaClass.classLoader!!
+        return XposedKit.engine.javaClass.classLoader!!
     }
 
     override fun getPackageName(): String {

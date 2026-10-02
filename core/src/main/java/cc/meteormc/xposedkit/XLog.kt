@@ -21,7 +21,7 @@ object XLog {
             it.hidden && it.priority >= newLevel
         }.forEach {
             it.hidden = false
-            XposedKit.impl.printLog(it)
+            XposedKit.engine.printLog(it)
         }
     }
 
@@ -50,7 +50,7 @@ object XLog {
         if (priority < level) {
             record.hidden = true
         } else {
-            XposedKit.impl.printLog(record)
+            XposedKit.engine.printLog(record)
         }
 
         records.add(record)

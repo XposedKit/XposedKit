@@ -309,7 +309,7 @@ fun <T : Any> Class<T>.findInstances(): List<T> {
 }
 
 fun Constructor<*>.deoptimize(): Boolean {
-    return XposedKit.impl.deoptimize(this)
+    return XposedKit.engine.deoptimize(this)
 }
 
 fun <T : Any> Constructor<*>.new(vararg args: Any?): T {
@@ -318,17 +318,17 @@ fun <T : Any> Constructor<*>.new(vararg args: Any?): T {
 
 fun <T : Any> Constructor<*>.call(obj: T, vararg args: Any?): T {
     setAccessible()
-    XposedKit.impl.invokeSpecial(this, obj, *args)
+    XposedKit.engine.invokeSpecial(this, obj, *args)
     return obj
 }
 
 fun <T : Any> Constructor<*>.callOriginal(obj: Any?, vararg args: Any?): T {
     setAccessible()
-    return XposedKit.impl.invokeOriginal(this, obj, *args) as T
+    return XposedKit.engine.invokeOriginal(this, obj, *args) as T
 }
 
 fun Method.deoptimize(): Boolean {
-    return XposedKit.impl.deoptimize(this)
+    return XposedKit.engine.deoptimize(this)
 }
 
 fun <T> Method.call(obj: Any?, vararg args: Any?): T {
@@ -337,12 +337,12 @@ fun <T> Method.call(obj: Any?, vararg args: Any?): T {
 
 fun <T> Method.callOriginal(obj: Any?, vararg args: Any?): T {
     setAccessible()
-    return XposedKit.impl.invokeOriginal(this, obj, *args) as T
+    return XposedKit.engine.invokeOriginal(this, obj, *args) as T
 }
 
 fun <T> Method.callSpecial(obj: Any, vararg args: Any?): T {
     setAccessible()
-    return XposedKit.impl.invokeSpecial(this, obj, *args) as T
+    return XposedKit.engine.invokeSpecial(this, obj, *args) as T
 }
 
 fun <T> Field.get(obj: Any?): T {

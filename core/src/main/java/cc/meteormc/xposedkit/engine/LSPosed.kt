@@ -1,4 +1,4 @@
-package cc.meteormc.xposedkit.impl
+package cc.meteormc.xposedkit.engine
 
 import android.app.Application
 import android.content.SharedPreferences
@@ -8,14 +8,13 @@ import android.os.ParcelFileDescriptor
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
 import cc.meteormc.xposedkit.XLog
-import cc.meteormc.xposedkit.XposedInterface
 import cc.meteormc.xposedkit.XposedKit
 import cc.meteormc.xposedkit.XposedKit.TAG
 import cc.meteormc.xposedkit.hook.HookHandle
 import cc.meteormc.xposedkit.hook.HookType
 import cc.meteormc.xposedkit.hook.InvokeCallback
 import cc.meteormc.xposedkit.hook.InvokeInfo
-import cc.meteormc.xposedkit.impl.LSPosed.HookIdentifier.Companion.toId
+import cc.meteormc.xposedkit.engine.LSPosed.HookIdentifier.Companion.toId
 import cc.meteormc.xposedkit.nativelib.NativeBridge
 import cc.meteormc.xposedkit.param.HotReloadingParam
 import cc.meteormc.xposedkit.param.PackageLoadedParam
@@ -23,6 +22,9 @@ import cc.meteormc.xposedkit.param.ProcessLoadedParam
 import cc.meteormc.xposedkit.param.SystemServerStartingParam
 import cc.meteormc.xposedkit.util.AtomicBooleanDelegate
 import cc.meteormc.xposedkit.util.WeakDelegate
+import io.github.libxposed.api.XposedInterface
+import io.github.libxposed.api.XposedModule
+import io.github.libxposed.api.XposedModuleInterface
 import java.lang.ref.WeakReference
 import java.lang.reflect.Constructor
 import java.lang.reflect.Executable
@@ -30,12 +32,9 @@ import java.lang.reflect.Member
 import java.lang.reflect.Method
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
-import io.github.libxposed.api.XposedInterface as LSPInterface
-import io.github.libxposed.api.XposedModule as LSPModule
-import io.github.libxposed.api.XposedModuleInterface as LSPLifecycle
 
 @RequiresApi(Build.VERSION_CODES.O)
-class LSPosed : XposedInterface, LSPModule() {
+class LSPosed : Engine, XposedModule() {
     override val apiVer: Int
         get() = apiVersion
     override val frameworkLabel: String
@@ -54,7 +53,7 @@ class LSPosed : XposedInterface, LSPModule() {
     private lateinit var processName: String
     private var isHotReloading by AtomicBooleanDelegate(false)
     private var systemServerClassLoader by WeakDelegate<ClassLoader>()
-    private var previousHookHandles = ConcurrentHashMap<Member, MutableList<LSPInterface.HookHandle>>()
+    private var previousHookHandles = ConcurrentHashMap<Member, MutableList<XposedInterface.HookHandle>>()
     private val appPackages = mutableMapOf<String, RuntimePackage>()
 
     private data class RuntimePackage(
@@ -98,7 +97,7 @@ class LSPosed : XposedInterface, LSPModule() {
             throw IllegalArgumentException("Member must be an Executable in LSPosed framework")
         }
 
-        fun LSPInterface.HookHandle.buildHandle(): HookHandle {
+        fun XposedInterface.HookHandle.buildHandle(): HookHandle {
             return HookHandle(
                 member,
                 type,
@@ -134,7 +133,7 @@ class LSPosed : XposedInterface, LSPModule() {
         }
 
         return hook(member)
-            .setExceptionMode(LSPInterface.ExceptionMode.PASSTHROUGH)
+            .setExceptionMode(XposedInterface.ExceptionMode.PASSTHROUGH)
             .setPriority(identifier.priority)
             .run { if (apiVersion >= 102) setId(identifier.toId()) else this }
             .intercept(hooker)
@@ -147,7 +146,7 @@ class LSPosed : XposedInterface, LSPModule() {
         callback: InvokeCallback
     ): HookHandle {
         val hooker = InterceptHooker(type, callback, true)
-        var handle: LSPInterface.HookHandle? = null
+        var handle: XposedInterface.HookHandle? = null
         if (isHotReloading) {
             handle = previousHookHandles.entries
                 .firstOrNull { (key, _) -> key.name == "<clinit>" && key.declaringClass == clazz }
@@ -158,7 +157,7 @@ class LSPosed : XposedInterface, LSPModule() {
 
         if (handle == null) {
             handle = hookClassInitializer(clazz)
-                .setExceptionMode(LSPInterface.ExceptionMode.PASSTHROUGH)
+                .setExceptionMode(XposedInterface.ExceptionMode.PASSTHROUGH)
                 .intercept(hooker)
         }
 
@@ -174,7 +173,7 @@ class LSPosed : XposedInterface, LSPModule() {
 
     override fun invokeOriginal(member: Member, obj: Any?, vararg args: Any?): Any? {
         return member.toInvoker()
-            .setType(LSPInterface.Invoker.Type.ORIGIN)
+            .setType(XposedInterface.Invoker.Type.ORIGIN)
             .invoke(obj, *args)
     }
 
@@ -205,7 +204,7 @@ class LSPosed : XposedInterface, LSPModule() {
     }
 
     @Keep
-    override fun onModuleLoaded(param: LSPLifecycle.ModuleLoadedParam) {
+    override fun onModuleLoaded(param: XposedModuleInterface.ModuleLoadedParam) {
         XposedKit.init(this)
         XposedKit.prepare()
         XLog.v(TAG, "Module loaded: processName=${param.processName}, isSystemServer=${param.isSystemServer}")
@@ -216,7 +215,7 @@ class LSPosed : XposedInterface, LSPModule() {
     }
 
     @Keep
-    override fun onPackageReady(param: LSPLifecycle.PackageReadyParam) {
+    override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
         XLog.v(TAG, "Package ready: packageName=${param.packageName}, isFirstPackage=${param.isFirstPackage}")
         val packageParam = PackageLoadedParam(
             processName,
@@ -236,7 +235,7 @@ class LSPosed : XposedInterface, LSPModule() {
     }
 
     @Keep
-    override fun onSystemServerStarting(param: LSPLifecycle.SystemServerStartingParam) {
+    override fun onSystemServerStarting(param: XposedModuleInterface.SystemServerStartingParam) {
         XLog.v(TAG, "System server starting")
         val systemParam = SystemServerStartingParam(param.classLoader)
         XposedKit.withModule { onSystemServerStarting(systemParam) }
@@ -244,7 +243,7 @@ class LSPosed : XposedInterface, LSPModule() {
     }
 
     @Keep
-    override fun onHotReloading(param: LSPLifecycle.HotReloadingParam): Boolean {
+    override fun onHotReloading(param: XposedModuleInterface.HotReloadingParam): Boolean {
         XLog.v(TAG, "Hot reloading: extras=${param.extras}")
         val reloadParam = HotReloadingParam(
             processName,
@@ -288,7 +287,7 @@ class LSPosed : XposedInterface, LSPModule() {
 
     @Keep
     @Suppress("UNCHECKED_CAST")
-    override fun onHotReloaded(param: LSPLifecycle.HotReloadedParam) {
+    override fun onHotReloaded(param: XposedModuleInterface.HotReloadedParam) {
         XposedKit.init(this)
         XLog.v(TAG, "Hot reloaded: extras=${param.extras}, processName=${param.processName}, isSystemServer=${param.isSystemServer}")
 
@@ -382,7 +381,7 @@ class LSPosed : XposedInterface, LSPModule() {
         previousHookHandles.clear()
     }
 
-    private fun Member.toInvoker(): LSPInterface.Invoker<out LSPInterface.Invoker<*, out Executable>, out Executable> {
+    private fun Member.toInvoker(): XposedInterface.Invoker<out XposedInterface.Invoker<*, out Executable>, out Executable> {
         return when (this) {
             is Method -> getInvoker(this)
             is Constructor<*> -> getInvoker(this)
@@ -396,9 +395,9 @@ class LSPosed : XposedInterface, LSPModule() {
         private val type: HookType,
         private val callback: InvokeCallback,
         private val ignoreResult: Boolean = false
-    ) : LSPInterface.Hooker {
+    ) : XposedInterface.Hooker {
         @Keep
-        override fun intercept(chain: LSPInterface.Chain): Any? {
+        override fun intercept(chain: XposedInterface.Chain): Any? {
             val member: Member = chain.executable
             return when (this.type) {
                 HookType.BEFORE -> {
