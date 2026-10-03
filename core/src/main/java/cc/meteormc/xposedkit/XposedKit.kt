@@ -2,6 +2,7 @@ package cc.meteormc.xposedkit
 
 import android.app.Application
 import android.content.SharedPreferences
+import android.content.pm.PackageInfo
 import android.content.pm.PackageParser
 import android.content.res.ApkAssets
 import android.content.res.AssetManager
@@ -90,30 +91,64 @@ object XposedKit {
     val moduleAppInfo
         get() = engine.getModuleAppInfo()
 
-    val moduleActivities
-        get() = modulePackageInfo.activities.map { it.info }
+    /**
+     * 获取模块的 [PackageInfo] 实例
+     */
+    val modulePackageInfo by lazy {
+        val pkg = parsedModulePackage
+        // TODO
+        PackageInfo().apply {
+            packageName = pkg.packageName
+            splitNames = pkg.splitNames
+            versionName = pkg.mVersionName
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                @Suppress("DEPRECATION")
+                versionCode = pkg.mVersionCode
+            } else {
+                longVersionCode = (pkg.mVersionCodeMajor.toLong() shl 32) or (pkg.mVersionCode.toLong() and 0xFFFFFFFFL)
+            }
 
-    val moduleReceivers
-        get() = modulePackageInfo.receivers.map { it.info }
-
-    val moduleProviders
-        get() = modulePackageInfo.providers.map { it.info }
-
-    val moduleServices
-        get() = modulePackageInfo.services.map { it.info }
+            baseRevisionCode = pkg.baseRevisionCode
+            splitRevisionCodes = pkg.splitRevisionCodes
+            sharedUserId = pkg.mSharedUserId
+            sharedUserLabel = pkg.mSharedUserLabel
+            installLocation = pkg.installLocation
+            firstInstallTime = firstInstallTime // review required
+            lastUpdateTime = lastUpdateTime // review required
+            applicationInfo = pkg.applicationInfo // review required
+            configPreferences = pkg.configPreferences.toTypedArray()
+            reqFeatures = pkg.reqFeatures.toTypedArray()
+            featureGroups = pkg.featureGroups.toTypedArray()
+            activities = pkg.activities.map { it.info }.toTypedArray() // review required
+            receivers = pkg.receivers.map { it.info }.toTypedArray() // review required
+            services = pkg.services.map { it.info }.toTypedArray() // review required
+            providers = pkg.providers.map { it.info }.toTypedArray() // review required
+            instrumentation = pkg.instrumentation.map { it.info }.toTypedArray() // review required
+            permissions = pkg.permissions.map { it.info }.toTypedArray() // review required
+            requestedPermissions = pkg.requestedPermissions.toTypedArray()
+        }
+    }
 
     val modulePackageName
-        get() = modulePackageInfo.packageName!!
+        get() = parsedModulePackage.packageName!!
 
-    internal val modulePackageInfo by lazy {
-        val source = File(moduleSource).parentFile
-        try {
-            PackageParser().parsePackage(source, 0).apply {
-                applicationInfo.sourceDir = moduleSource
-                applicationInfo.publicSourceDir = applicationInfo.sourceDir
+    val remotePreferences by lazy {
+        object : RemotePreferencesProvider {
+            override fun get(name: String): SharedPreferences {
+                return engine.getRemotePrefs(name)
             }
-        } catch (e: PackageParser.PackageParserException) {
-            throw IllegalStateException("Failed to parse module package!", e)
+        }
+    }
+
+    val remoteFile by lazy {
+        object : RemoteFileProvider {
+            override fun get(name: String): ParcelFileDescriptor {
+                return engine.getRemoteFile(name)
+            }
+
+            override fun files(): List<String> {
+                return engine.getRemoteFiles()
+            }
         }
     }
 
@@ -158,23 +193,15 @@ object XposedKit {
         throw IllegalStateException("No valid XposedModule implementation found!")
     }
 
-    val remotePreferences by lazy {
-        object : RemotePreferencesProvider {
-            override fun get(name: String): SharedPreferences {
-                return engine.getRemotePrefs(name)
+    internal val parsedModulePackage by lazy {
+        val source = File(moduleSource).parentFile
+        try {
+            PackageParser().parsePackage(source, 0).apply {
+                applicationInfo.sourceDir = moduleSource
+                applicationInfo.publicSourceDir = applicationInfo.sourceDir
             }
-        }
-    }
-
-    val remoteFile by lazy {
-        object : RemoteFileProvider {
-            override fun get(name: String): ParcelFileDescriptor {
-                return engine.getRemoteFile(name)
-            }
-
-            override fun files(): List<String> {
-                return engine.getRemoteFiles()
-            }
+        } catch (e: PackageParser.PackageParserException) {
+            throw IllegalStateException("Failed to parse module package!", e)
         }
     }
 

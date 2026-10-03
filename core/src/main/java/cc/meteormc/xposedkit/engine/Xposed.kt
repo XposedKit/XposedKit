@@ -65,7 +65,7 @@ class Xposed : Engine, IXposedHookZygoteInit, IXposedHookLoadPackage {
     }
 
     override fun getModuleAppInfo(): ApplicationInfo {
-        return XposedKit.modulePackageInfo.applicationInfo
+        return XposedKit.parsedModulePackage.applicationInfo
     }
 
     override fun deoptimize(member: Member): Boolean {

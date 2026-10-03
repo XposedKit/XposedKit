@@ -134,7 +134,7 @@ open class ModuleContextWrapper(
 
     override fun startActivity(intent: Intent, options: Bundle?) {
         XLog.d(TAG, "startActivity: ${intent.component}")
-        val targetActivityInfo = XposedKit.moduleActivities.firstOrNull {
+        val targetActivityInfo = XposedKit.modulePackageInfo.activities?.firstOrNull {
             intent.component == ComponentName(it.packageName, it.name)
         }
 
