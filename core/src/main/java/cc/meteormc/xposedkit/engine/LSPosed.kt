@@ -68,7 +68,9 @@ class LSPosed : Engine, XposedModule() {
         return moduleApplicationInfo.sourceDir
     }
 
-    override fun getModuleAppInfo(): ApplicationInfo = moduleApplicationInfo
+    override fun getModuleAppInfo(): ApplicationInfo {
+        return moduleApplicationInfo
+    }
 
     override fun deoptimize(member: Member): Boolean {
         if (member !is Executable) {
