@@ -35,21 +35,6 @@ import java.util.concurrent.ConcurrentHashMap
 
 @RequiresApi(Build.VERSION_CODES.O)
 class LSPosed : Engine, XposedModule() {
-    override val apiVer: Int
-        get() = apiVersion
-    override val frameworkLabel: String
-        get() = frameworkName
-    override val frameworkVer: String
-        get() = frameworkVersion
-    override val frameworkVerCode: Long
-        get() = frameworkVersionCode
-    override val frameworkProp: Long
-        get() = frameworkProperties
-    override val moduleSource: String
-        get() = moduleAppInfo.sourceDir
-    override val moduleAppInfo: ApplicationInfo
-        get() = moduleApplicationInfo
-
     private lateinit var processName: String
     private var isHotReloading by AtomicBooleanDelegate(false)
     private var systemServerClassLoader by WeakDelegate<ClassLoader>()
@@ -78,6 +63,12 @@ class LSPosed : Engine, XposedModule() {
             appPackages[packageName]?.context = WeakReference(it)
         }
     }
+
+    override fun getModuleSource(): String {
+        return moduleApplicationInfo.sourceDir
+    }
+
+    override fun getModuleAppInfo(): ApplicationInfo = moduleApplicationInfo
 
     override fun deoptimize(member: Member): Boolean {
         if (member !is Executable) {

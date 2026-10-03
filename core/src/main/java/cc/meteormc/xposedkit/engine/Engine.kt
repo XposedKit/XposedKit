@@ -10,19 +10,19 @@ import cc.meteormc.xposedkit.hook.InvokeCallback
 import java.lang.reflect.Member
 
 internal interface Engine {
-    val apiVer: Int
+    fun getApiVersion(): Int
 
-    val frameworkLabel: String
+    fun getFrameworkName(): String
 
-    val frameworkVer: String
+    fun getFrameworkVersion(): String
 
-    val frameworkVerCode: Long
+    fun getFrameworkVersionCode(): Long
 
-    val frameworkProp: Long
+    fun getFrameworkProperties(): Long
 
-    val moduleSource: String
+    fun getModuleSource(): String
 
-    val moduleAppInfo: ApplicationInfo
+    fun getModuleAppInfo(): ApplicationInfo
 
     fun deoptimize(member: Member): Boolean
 

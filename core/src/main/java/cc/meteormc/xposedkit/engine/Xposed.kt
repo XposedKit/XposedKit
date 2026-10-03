@@ -34,25 +34,39 @@ class Xposed : Engine, IXposedHookZygoteInit, IXposedHookLoadPackage {
         XposedKit.init(this)
     }
 
-    override val apiVer: Int
-        get() = XposedBridge.getXposedVersion()
-    override val frameworkLabel: String
-        get() = runCatching {
+    private var moduleSource: String? = null
+
+    override fun getApiVersion(): Int {
+        return XposedBridge.getXposedVersion()
+    }
+
+    override fun getFrameworkName(): String {
+        return runCatching {
             XposedBridge::class.java.getDeclaredField("TAG").get(null) as String
         }.getOrDefault("Xposed").filter {
             it == ' ' || it.isLetterOrDigit()
         }
-    override val frameworkVer: String
-        get() = "Unknown"
-    override val frameworkVerCode: Long
-        get() = -1L
-    override val frameworkProp: Long
-        get() = 0x00
-    override var moduleSource: String = ""
-        get() = field.ifBlank { throw IllegalStateException("Module source is not set!") }
-        private set
-    override val moduleAppInfo: ApplicationInfo
-        get() = XposedKit.modulePackageInfo.applicationInfo
+    }
+
+    override fun getFrameworkVersion(): String {
+        return "Unknown"
+    }
+
+    override fun getFrameworkVersionCode(): Long {
+        return -1L
+    }
+
+    override fun getFrameworkProperties(): Long {
+        return 0x00
+    }
+
+    override fun getModuleSource(): String {
+        return moduleSource ?: throw IllegalStateException("Module source is not set!")
+    }
+
+    override fun getModuleAppInfo(): ApplicationInfo {
+        return XposedKit.modulePackageInfo.applicationInfo
+    }
 
     override fun deoptimize(member: Member): Boolean {
         if (Modifier.isNative(member.modifiers)) {

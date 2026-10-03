@@ -69,29 +69,26 @@ object XposedKit {
         return block(moduleInstance)
     }
 
-    val available
-        get() = ::engine.isInitialized
-
     val apiVersion
-        get() = engine.apiVer
+        get() = engine.getApiVersion()
 
     val frameworkName
-        get() = engine.frameworkLabel
+        get() = engine.getFrameworkName()
 
     val frameworkVersion
-        get() = engine.frameworkVer
+        get() = engine.getFrameworkVersion()
 
     val frameworkVersionCode
-        get() = engine.frameworkVerCode
+        get() = engine.getFrameworkVersionCode()
 
     val frameworkProperties
-        get() = engine.frameworkProp
+        get() = engine.getFrameworkProperties()
 
     val moduleSource
-        get() = engine.moduleSource
+        get() = engine.getModuleSource()
 
     val moduleAppInfo
-        get() = engine.moduleAppInfo
+        get() = engine.getModuleAppInfo()
 
     val moduleActivities
         get() = modulePackageInfo.activities.map { it.info }
@@ -105,8 +102,8 @@ object XposedKit {
     val moduleServices
         get() = modulePackageInfo.services.map { it.info }
 
-    val modulePackageName: String
-        get() = modulePackageInfo.packageName
+    val modulePackageName
+        get() = modulePackageInfo.packageName!!
 
     internal val modulePackageInfo by lazy {
         val source = File(moduleSource).parentFile
