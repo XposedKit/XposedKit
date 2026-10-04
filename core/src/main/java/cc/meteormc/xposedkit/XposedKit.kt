@@ -2,8 +2,13 @@ package cc.meteormc.xposedkit
 
 import android.app.Application
 import android.content.SharedPreferences
+import android.content.pm.ActivityInfo
+import android.content.pm.ApplicationInfo
+import android.content.pm.ComponentInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageParser
+import android.content.pm.ProviderInfo
+import android.content.pm.ServiceInfo
 import android.content.res.ApkAssets
 import android.content.res.AssetManager
 import android.content.res.Configuration
@@ -91,12 +96,8 @@ object XposedKit {
     val moduleAppInfo
         get() = engine.getModuleAppInfo()
 
-    /**
-     * 获取模块的 [PackageInfo] 实例
-     */
     val modulePackageInfo by lazy {
         val pkg = parsedModulePackage
-        // TODO
         PackageInfo().apply {
             packageName = pkg.packageName
             splitNames = pkg.splitNames
@@ -113,18 +114,22 @@ object XposedKit {
             sharedUserId = pkg.mSharedUserId
             sharedUserLabel = pkg.mSharedUserLabel
             installLocation = pkg.installLocation
-            firstInstallTime = firstInstallTime // review required
-            lastUpdateTime = lastUpdateTime // review required
-            applicationInfo = pkg.applicationInfo // review required
+            applicationInfo = ApplicationInfo(pkg.applicationInfo).apply { metaData = pkg.mAppMetaData }
             configPreferences = pkg.configPreferences.toTypedArray()
             reqFeatures = pkg.reqFeatures.toTypedArray()
             featureGroups = pkg.featureGroups.toTypedArray()
-            activities = pkg.activities.map { it.info }.toTypedArray() // review required
-            receivers = pkg.receivers.map { it.info }.toTypedArray() // review required
-            services = pkg.services.map { it.info }.toTypedArray() // review required
-            providers = pkg.providers.map { it.info }.toTypedArray() // review required
-            instrumentation = pkg.instrumentation.map { it.info }.toTypedArray() // review required
-            permissions = pkg.permissions.map { it.info }.toTypedArray() // review required
+
+            fun <T : ComponentInfo> T.copyInfo(from: PackageParser.Component) : T {
+                applicationInfo = this@apply.applicationInfo
+                metaData = from.metaData
+                return this
+            }
+            activities = pkg.activities.map { ActivityInfo(it.info).copyInfo(it) }.toTypedArray()
+            receivers = pkg.receivers.map { ActivityInfo(it.info).copyInfo(it) }.toTypedArray()
+            services = pkg.services.map { ServiceInfo(it.info).copyInfo(it) }.toTypedArray()
+            providers = pkg.providers.map { ProviderInfo(it.info).copyInfo(it) }.toTypedArray()
+            instrumentation = pkg.instrumentation.map { it.info }.toTypedArray()
+            permissions = pkg.permissions.map { it.info }.toTypedArray()
             requestedPermissions = pkg.requestedPermissions.toTypedArray()
         }
     }

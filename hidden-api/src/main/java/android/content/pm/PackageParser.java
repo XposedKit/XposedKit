@@ -1,5 +1,7 @@
 package android.content.pm;
 
+import android.os.Bundle;
+
 import java.io.File;
 import java.util.ArrayList;
 
@@ -19,6 +21,7 @@ public class PackageParser {
         public String mSharedUserId;
         public int mSharedUserLabel;
         public int installLocation;
+        public Bundle mAppMetaData;
         public ApplicationInfo applicationInfo;
 
         public ArrayList<ConfigurationInfo> configPreferences;
@@ -39,15 +42,11 @@ public class PackageParser {
         }
     }
 
-    public static final class Permission {
-        public final PermissionInfo info;
-
-        public Permission() {
-            throw new RuntimeException("Stub!");
-        }
+    public static abstract class Component {
+        public Bundle metaData;
     }
 
-    public static final class Activity {
+    public static final class Activity extends Component {
         public final ActivityInfo info;
 
         public Activity() {
@@ -55,7 +54,7 @@ public class PackageParser {
         }
     }
 
-    public static final class Service {
+    public static final class Service extends Component {
         public final ServiceInfo info;
 
         public Service() {
@@ -63,7 +62,7 @@ public class PackageParser {
         }
     }
 
-    public static final class Provider {
+    public static final class Provider extends Component {
         public final ProviderInfo info;
 
         public Provider() {
@@ -71,10 +70,18 @@ public class PackageParser {
         }
     }
 
-    public static final class Instrumentation {
+    public static final class Instrumentation extends Component {
         public final InstrumentationInfo info;
 
         public Instrumentation() {
+            throw new RuntimeException("Stub!");
+        }
+    }
+
+    public static final class Permission extends Component {
+        public final PermissionInfo info;
+
+        public Permission() {
             throw new RuntimeException("Stub!");
         }
     }
