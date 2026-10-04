@@ -16,7 +16,7 @@ class InvokeInfo(
     result: Any?,
     val exception: Throwable?
 ) {
-    internal var cancelled = false
+    var cancelled = false
     var result = result
         set(value) {
             this.cancel()

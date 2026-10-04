@@ -75,27 +75,55 @@ object XposedKit {
         return block(moduleInstance)
     }
 
+    /**
+     * 获取运行时 Xposed API 版本
+     */
     val apiVersion
         get() = engine.getApiVersion()
 
+    /**
+     * 获取当前 Xposed 框架名称
+     */
     val frameworkName
         get() = engine.getFrameworkName()
 
+    /**
+     * 获取当前 Xposed 框架版本名
+     */
     val frameworkVersion
         get() = engine.getFrameworkVersion()
 
+    /**
+     * 获取当前 Xposed 框架版本号
+     */
     val frameworkVersionCode
         get() = engine.getFrameworkVersionCode()
 
+    /**
+     * 获取当前 Xposed 框架属性
+     *
+     * @see PROP_CAP_SYSTEM
+     * @see PROP_CAP_REMOTE
+     * @see PROP_API_PROTECTION
+     */
     val frameworkProperties
         get() = engine.getFrameworkProperties()
 
+    /**
+     * 获取模块的APK文件路径
+     */
     val moduleSource
         get() = engine.getModuleSource()
 
+    /**
+     * 获取模块的 [ApplicationInfo] 实例
+     */
     val moduleAppInfo
         get() = engine.getModuleAppInfo()
 
+    /**
+     * 获取模块的 [PackageInfo] 实例
+     */
     val modulePackageInfo by lazy {
         val pkg = parsedModulePackage
         PackageInfo().apply {
@@ -108,7 +136,6 @@ object XposedKit {
             } else {
                 longVersionCode = (pkg.mVersionCodeMajor.toLong() shl 32) or (pkg.mVersionCode.toLong() and 0xFFFFFFFFL)
             }
-
             baseRevisionCode = pkg.baseRevisionCode
             splitRevisionCodes = pkg.splitRevisionCodes
             sharedUserId = pkg.mSharedUserId
@@ -118,7 +145,6 @@ object XposedKit {
             configPreferences = pkg.configPreferences.toTypedArray()
             reqFeatures = pkg.reqFeatures.toTypedArray()
             featureGroups = pkg.featureGroups.toTypedArray()
-
             fun <T : ComponentInfo> T.copyInfo(from: PackageParser.Component) : T {
                 applicationInfo = this@apply.applicationInfo
                 metaData = from.metaData
@@ -134,29 +160,15 @@ object XposedKit {
         }
     }
 
+    /**
+     * 获取模块的包名
+     */
     val modulePackageName
         get() = parsedModulePackage.packageName!!
 
-    val remotePreferences by lazy {
-        object : RemotePreferencesProvider {
-            override fun get(name: String): SharedPreferences {
-                return engine.getRemotePrefs(name)
-            }
-        }
-    }
-
-    val remoteFile by lazy {
-        object : RemoteFileProvider {
-            override fun get(name: String): ParcelFileDescriptor {
-                return engine.getRemoteFile(name)
-            }
-
-            override fun files(): List<String> {
-                return engine.getRemoteFiles()
-            }
-        }
-    }
-
+    /**
+     * 获取模块的 [XposedModule] 对象
+     */
     internal val moduleInstance by lazy {
         val classLoader = javaClass.classLoader!!
         // ServiceLoader 不能直接适配 kotlin 的单例类, 所以改为自己实现
@@ -198,6 +210,9 @@ object XposedKit {
         throw IllegalStateException("No valid XposedModule implementation found!")
     }
 
+    /**
+     * 获取解析的模块 [PackageParser.Package] 实例
+     */
     internal val parsedModulePackage by lazy {
         val source = File(moduleSource).parentFile
         try {
@@ -210,6 +225,35 @@ object XposedKit {
         }
     }
 
+    /**
+     * 获取远程首选项
+     */
+    val remotePreferences by lazy {
+        object : RemotePreferencesProvider {
+            override fun get(name: String): SharedPreferences {
+                return engine.getRemotePrefs(name)
+            }
+        }
+    }
+
+    /**
+     * 获取远程文件
+     */
+    val remoteFile by lazy {
+        object : RemoteFileProvider {
+            override fun get(name: String): ParcelFileDescriptor {
+                return engine.getRemoteFile(name)
+            }
+
+            override fun files(): List<String> {
+                return engine.getRemoteFiles()
+            }
+        }
+    }
+
+    /**
+     * 创建一个用于模块的 [Resources] 实例
+     */
     fun createModuleResources(
         metrics: DisplayMetrics? = null,
         config: Configuration? = null,
@@ -243,12 +287,19 @@ object XposedKit {
         return resources
     }
 
+    /**
+     * 将指定的资源路径添加到一个 [Resources] 实例中
+     */
     fun addAssetPathToResources(resources: Resources, path: String) {
         AssetManager::class.reflect {
             method("addAssetPath")!!.call<Int>(resources.assets, path)
         }
     }
 
+    /**
+     * 注册一个应用附加监听器, 当指定包名的应用被附加时会回调
+     * 如果应用已经附加, 则会立即执行回调
+     */
     fun registerAppAttachListener(packageName: String, listener: (Application) -> Unit) {
         val attached = attachedApplications[packageName]
         if (attached != null) {
@@ -262,6 +313,9 @@ object XposedKit {
         }
     }
 
+    /**
+     * 取消注册一个应用附加监听器
+     */
     fun unregisterAppAttachListeners(packageName: String) {
         appAttachListeners.remove(packageName)
     }
