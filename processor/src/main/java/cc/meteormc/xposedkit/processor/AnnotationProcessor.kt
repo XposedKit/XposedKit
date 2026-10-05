@@ -55,11 +55,14 @@ class AnnotationProcessor(
     private fun processModuleAnnotation(metadata: Properties) {
         logger.info("processModuleAnnotation: $moduleClasses")
 
-        moduleClasses.removeAll {
-            it.isSubclassOf(XPOSED_MODULE_CLASS_NAME).apply {
-                if (this) return@apply
-                logger.warn("Class ${it.qualifiedName?.asString()} is annotated with @ModuleRegister but does not implement $XPOSED_MODULE_CLASS_NAME, ignoring it")
-            }
+        val iterator = moduleClasses.iterator()
+        while (iterator.hasNext()) {
+            val clazz = iterator.next()
+            if (clazz.isSubclassOf(XPOSED_MODULE_CLASS_NAME)) continue
+
+            val className = clazz.qualifiedName?.asString()
+            logger.warn("Class $className is annotated with @ModuleRegister but does not implement $XPOSED_MODULE_CLASS_NAME, ignoring it")
+            iterator.remove()
         }
 
         if (moduleClasses.isEmpty()) {
