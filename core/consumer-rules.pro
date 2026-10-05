@@ -14,8 +14,11 @@
 -dontwarn android.app.ActivityThread$ActivityClientRecord
 -dontwarn android.content.pm.PackageParser
 -dontwarn android.content.pm.PackageParser$Package
+-dontwarn android.content.pm.PackageParser$Component
 -dontwarn android.content.pm.PackageParser$Activity
--dontwarn android.content.pm.PackageParser$Provider
 -dontwarn android.content.pm.PackageParser$Service
+-dontwarn android.content.pm.PackageParser$Provider
+-dontwarn android.content.pm.PackageParser$Instrumentation
+-dontwarn android.content.pm.PackageParser$Permission
 -dontwarn android.content.pm.PackageParser$PackageParserException
 -dontwarn android.content.res.ApkAssets
