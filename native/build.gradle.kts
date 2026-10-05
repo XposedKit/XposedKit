@@ -33,6 +33,7 @@ tasks.named<Delete>("clean") {
 publishing {
     publications {
         register<MavenPublication>("release") {
+            artifactId = "xposedkit-native"
             afterEvaluate {
                 from(components["release"])
             }

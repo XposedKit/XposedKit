@@ -11,6 +11,7 @@ dependencies {
 publishing {
     publications {
         register<MavenPublication>("release") {
+            artifactId = "xposedkit-processor"
             afterEvaluate {
                 from(components["java"])
             }
