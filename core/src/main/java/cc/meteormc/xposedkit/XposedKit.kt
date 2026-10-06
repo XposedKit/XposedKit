@@ -115,9 +115,9 @@ object XposedKit {
             sharedUserLabel = pkg.mSharedUserLabel
             installLocation = pkg.installLocation
             applicationInfo = ApplicationInfo(pkg.applicationInfo).apply { metaData = pkg.mAppMetaData }
-            configPreferences = pkg.configPreferences.toTypedArray()
-            reqFeatures = pkg.reqFeatures.toTypedArray()
-            featureGroups = pkg.featureGroups.toTypedArray()
+            configPreferences = pkg.configPreferences?.toTypedArray()
+            reqFeatures = pkg.reqFeatures?.toTypedArray()
+            featureGroups = pkg.featureGroups?.toTypedArray()
 
             fun <T : ComponentInfo> T.copyInfo(from: PackageParser.Component) : T {
                 applicationInfo = this@apply.applicationInfo
