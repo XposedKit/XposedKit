@@ -19,7 +19,7 @@ object StackAnalyzer {
                 .filter {
                     val className = it.className
                     val methodName = it.methodName
-                    val sourceName = it.fileName
+                    val sourceName = it.fileName.orEmpty()
                     if (className.startsWith($$$"-$$Nest")) return@filter false
                     if (className.contains($$$"$$ExternalSynthetic")) return@filter false
                     if (methodName.startsWith("access$")) return@filter false
