@@ -1,3 +1,11 @@
 plugins {
-    alias(libs.plugins.kotlin.jvm)
+    id("java-library")
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(8)
+    }
 }
