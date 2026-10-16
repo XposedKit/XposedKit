@@ -157,48 +157,60 @@ open class ModuleContextWrapper(
             }
         } ?: throw IllegalStateException("Failed to get running activities from ActivityThread!")
 
-        fun List<ActivityInfo>.filterVaild(): List<ActivityInfo>? {
-            return filter {
-                // 过滤activity-alias
-                if (it.targetActivity != null) return@filter false
-                // 过滤已经在运行的Activity
-                if (it.name in runningActivities) return@filter false
-                // 过滤launchMode与targetInfo不一致的Activity
-                if (it.launchMode != targetActivityInfo.launchMode) return@filter false
-                return@filter true
-            }.ifEmpty { null }?.apply {
-                XLog.d(TAG, "Found $size valid activities for ${targetActivityInfo.name}:\n" +
-                        joinToString(separator = "\n", limit = 4, truncated = "\nand more...") { it.name })
-            }
-        }
-
         val pm = baseContext.packageManager
         val basePackage = baseContext.packageName
         if (mProxyActivity == null) {
-            val pendingActivities = pm.queryIntentActivities(
-                // 先查Launcher Activity
-                Intent(Intent.ACTION_MAIN).apply {
-                    addCategory(Intent.CATEGORY_LAUNCHER)
-                    setPackage(basePackage)
-                },
-                PackageManager.MATCH_ALL
-            ).map { it.activityInfo }.filterVaild() ?: pm.queryIntentActivities(
-                // 再查主Activity
-                Intent(Intent.ACTION_MAIN).apply {
-                    setPackage(basePackage)
-                },
-                PackageManager.MATCH_ALL
-            ).map { it.activityInfo }.filterVaild() ?: pm.getPackageInfo(
-                // 最后查找全部
-                basePackage,
-                PackageManager.GET_ACTIVITIES
-            ).activities?.toList()?.filterVaild() ?: throw IllegalStateException(
-                "Failed to find any valid Activity in package '$basePackage'!"
+            // A proxy only has to be an Activity the system will actually start: it is replaced at
+            // instantiation (see tryNewModuleActivity) and never runs itself.
+            //
+            // Build one candidate list from the host's launcher activity plus everything it
+            // declares, drop the activity-alias entries, and keep only components that resolve.
+            // The properties that make the swap reliable (not already running, matching
+            // launchMode) are then *preferred* rather than required: requiring them used to
+            // collapse the list to a single entry, which on some hosts is an activity that starts
+            // and never becomes visible - Spotify's XR projection activity - so the swap never ran
+            // and the launch looked like a no-op.
+            val candidates = buildList {
+                pm.getLaunchIntentForPackage(basePackage)?.component?.let { add(it) }
+                pm.queryIntentActivities(
+                    Intent(Intent.ACTION_MAIN).apply { setPackage(basePackage) },
+                    PackageManager.MATCH_ALL
+                ).forEach { add(ComponentName(it.activityInfo.packageName, it.activityInfo.name)) }
+                runCatching { pm.getPackageInfo(basePackage, PackageManager.GET_ACTIVITIES) }
+                    .getOrNull()
+                    ?.activities
+                    ?.forEach { add(ComponentName(it.packageName, it.name)) }
+            }.distinct()
+                .mapNotNull { component -> runCatching { pm.getActivityInfo(component, 0) }.getOrNull() }
+                .filter { it.targetActivity == null }
+                .distinctBy { it.name }
+                .filter { info ->
+                    runCatching {
+                        pm.resolveActivity(Intent().setComponent(ComponentName(info.packageName, info.name)), 0) != null
+                    }.getOrDefault(false)
+                }
+
+            val info = candidates.firstOrNull {
+                it.name !in runningActivities && it.launchMode == targetActivityInfo.launchMode && it.exported
+            } ?: candidates.firstOrNull {
+                it.name !in runningActivities && it.launchMode == targetActivityInfo.launchMode
+            } ?: candidates.firstOrNull {
+                it.launchMode == targetActivityInfo.launchMode
+            } ?: candidates.firstOrNull {
+                it.name !in runningActivities
+            } ?: candidates.firstOrNull() ?: throw IllegalStateException(
+                "Failed to find a launchable proxy Activity in package '$basePackage'!"
             )
-            val info = pendingActivities.firstOrNull {
-                // 优先取exported=true并且未设置taskAffinity的Activity
-                it.exported && it.taskAffinity == null
-            } ?: pendingActivities.first()
+
+            if (info.name in runningActivities || info.launchMode != targetActivityInfo.launchMode) {
+                XLog.w(
+                    TAG,
+                    "startActivity: no ideal proxy Activity in '$basePackage'" +
+                            " (running=${info.name in runningActivities}, launchMode=${info.launchMode})," +
+                            " using '${info.name}'"
+                )
+            }
+            XLog.d(TAG, "startActivity: using proxy Activity '${info.name}' of ${candidates.size} launchable candidates")
             mProxyActivity = ComponentName(info.packageName, info.name)
         }
 
