@@ -1,7 +1,6 @@
 module;
 
-#include "jni.h"
-
+#include <jni.h>
 #include <vector>
 
 export module xposedkit;
@@ -82,8 +81,8 @@ static jobject JNICALL CallNonvirtualMethod(JNIEnv* env, jclass,
         jvalue local{};
         auto result = &local;
         auto returnType = GetPrimitiveType(
-                env,
-                static_cast<jclass>(env->CallObjectMethod(method, Method_Method_returnType)));
+            env,
+            static_cast<jclass>(env->CallObjectMethod(method, Method_Method_returnType)));
         switch (returnType) {
             case PrimitiveType::Object:
                 return env->CallNonvirtualObjectMethodA(instance, clazz, target, cargs.data());
@@ -183,24 +182,24 @@ JNI_OnLoad(JavaVM* vm, void*) {
     }
 
     static const JNINativeMethod methods[] = {
-            {"Init",
-             "()V",
-             reinterpret_cast<void*>(Init)},
-            {"Cleanup",
-             "()V",
-             reinterpret_cast<void*>(Cleanup)},
-            {"AllocObject",
-             "(Ljava/lang/Class;)Ljava/lang/Object;",
-             reinterpret_cast<void*>(AllocObject)},
-            {"CallNonvirtualMethod",
-             "(Ljava/lang/reflect/Executable;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;",
-             reinterpret_cast<void*>(CallNonvirtualMethod)},
-            {"FindClassInitializer",
-             "(Ljava/lang/Class;)Ljava/lang/reflect/Member;",
-             reinterpret_cast<void*>(FindClassInitializer)},
-            {"VisitHeapObjects",
-             "(Ljava/lang/Class;Z)[Ljava/lang/Object;",
-             reinterpret_cast<void*>(VisitHeapObjects)},
+        {"Init",
+         "()V",
+         reinterpret_cast<void*>(Init)},
+        {"Cleanup",
+         "()V",
+         reinterpret_cast<void*>(Cleanup)},
+        {"AllocObject",
+         "(Ljava/lang/Class;)Ljava/lang/Object;",
+         reinterpret_cast<void*>(AllocObject)},
+        {"CallNonvirtualMethod",
+         "(Ljava/lang/reflect/Executable;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;",
+         reinterpret_cast<void*>(CallNonvirtualMethod)},
+        {"FindClassInitializer",
+         "(Ljava/lang/Class;)Ljava/lang/reflect/Member;",
+         reinterpret_cast<void*>(FindClassInitializer)},
+        {"VisitHeapObjects",
+         "(Ljava/lang/Class;Z)[Ljava/lang/Object;",
+         reinterpret_cast<void*>(VisitHeapObjects)},
     };
 
     auto result = env->RegisterNatives(bridge, methods, std::size(methods));
@@ -223,4 +222,4 @@ JNI_OnUnload(JavaVM* vm, void*) {
     Cleanup(env, nullptr);
 }
 
-}
+}  // namespace xposedkit

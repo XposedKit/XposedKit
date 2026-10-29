@@ -1,7 +1,6 @@
 module;
 
-#include "xdl.h"
-
+#include <xdl.h>
 #include <string_view>
 
 export module xposedkit:symbol_resolver;
@@ -9,7 +8,6 @@ export module xposedkit:symbol_resolver;
 namespace xposedkit::art {
 
 export class SymbolResolver {
-
 private:
     inline static void* handle = nullptr;
 
@@ -20,7 +18,7 @@ private:
     }
 
 public:
-    template<typename T>
+    template <typename T>
     static T Find(std::string_view symbol) {
         if (!EnsureInitialized()) {
             throw std::runtime_error("Failed to open libart.so");
@@ -28,7 +26,6 @@ public:
 
         return reinterpret_cast<T>(xdl_sym(handle, symbol.data(), nullptr));
     }
-
 };
 
-}
+}  // namespace xposedkit::art

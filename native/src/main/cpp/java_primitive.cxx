@@ -1,6 +1,6 @@
 module;
 
-#include "jni.h"
+#include <jni.h>
 
 export module xposedkit:java_primitive;
 
@@ -122,4 +122,4 @@ jvalue ToPrimitiveType(JNIEnv* env, jclass clazz, jobject value) {
     return ToPrimitiveType(env, GetPrimitiveType(env, clazz), value);
 }
 
-}
+}  // namespace xposedkit
