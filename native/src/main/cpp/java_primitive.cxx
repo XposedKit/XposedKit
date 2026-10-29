@@ -21,7 +21,7 @@ enum class PrimitiveType {
     Void,
 };
 
-static auto GetPrimitiveType(JNIEnv* env, jclass clazz) {
+auto GetPrimitiveType(JNIEnv* env, jclass clazz) {
     using enum PrimitiveType;
     if (env->IsSameObject(clazz, Class_Boolean))
         return Boolean;
@@ -53,7 +53,7 @@ static auto GetPrimitiveType(JNIEnv* env, jclass clazz) {
     return Object;
 }
 
-static jobject FromPrimitiveType(JNIEnv* env, PrimitiveType type, jvalue value) {
+jobject FromPrimitiveType(JNIEnv* env, PrimitiveType type, jvalue value) {
     using enum PrimitiveType;
     switch (type) {
         case Object:
@@ -81,11 +81,11 @@ static jobject FromPrimitiveType(JNIEnv* env, PrimitiveType type, jvalue value) 
     return nullptr;
 }
 
-static jobject FromPrimitiveType(JNIEnv* env, jclass clazz, jvalue value) {
+jobject FromPrimitiveType(JNIEnv* env, jclass clazz, jvalue value) {
     return FromPrimitiveType(env, GetPrimitiveType(env, clazz), value);
 }
 
-static jvalue ToPrimitiveType(JNIEnv* env, PrimitiveType type, jobject value) {
+jvalue ToPrimitiveType(JNIEnv* env, PrimitiveType type, jobject value) {
     jvalue jv{};
     using enum PrimitiveType;
     switch (type) {
@@ -123,7 +123,7 @@ static jvalue ToPrimitiveType(JNIEnv* env, PrimitiveType type, jobject value) {
     return jv;
 }
 
-static jvalue ToPrimitiveType(JNIEnv* env, jclass clazz, jobject value) {
+jvalue ToPrimitiveType(JNIEnv* env, jclass clazz, jobject value) {
     return ToPrimitiveType(env, GetPrimitiveType(env, clazz), value);
 }
 
