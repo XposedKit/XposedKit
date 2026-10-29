@@ -26,7 +26,7 @@ private:
     Thread* const self_;
 
 public:
-    ScopedObjectAccess(Thread* self) : self_(self) {
+    explicit ScopedObjectAccess(Thread* self) : self_(self) {
         if (ArtJniMethodEnd_) {
             ArtJniMethodEnd_(self_);
             return;

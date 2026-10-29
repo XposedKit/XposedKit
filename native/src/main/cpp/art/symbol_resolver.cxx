@@ -19,7 +19,7 @@ private:
 
 public:
     template <typename T>
-    static T Find(std::string_view symbol) {
+    static T Find(const std::string_view symbol) {
         if (!EnsureInitialized()) {
             throw std::runtime_error("Failed to open libart.so");
         }

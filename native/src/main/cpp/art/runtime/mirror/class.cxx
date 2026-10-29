@@ -21,7 +21,7 @@ private:
     inline static auto FindClassInitializer_ = [] {
         using Fn = ArtMethod* (*)(Class*, size_t);
 
-        if (auto fn = SymbolResolver::Find<ArtMethod* (*)(Class*, PointerSize)>("_ZN3art6mirror5Class20FindClassInitializerENS_11PointerSizeE")) {
+        if (const auto fn = SymbolResolver::Find<ArtMethod* (*)(Class*, PointerSize)>("_ZN3art6mirror5Class20FindClassInitializerENS_11PointerSizeE")) {
             // Android8及以上
             return reinterpret_cast<Fn>(fn);
         }

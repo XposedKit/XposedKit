@@ -182,24 +182,36 @@ JNI_OnLoad(JavaVM* vm, void*) {
     }
 
     static const JNINativeMethod methods[] = {
-        {"Init",
-         "()V",
-         reinterpret_cast<void*>(Init)},
-        {"Cleanup",
-         "()V",
-         reinterpret_cast<void*>(Cleanup)},
-        {"AllocObject",
-         "(Ljava/lang/Class;)Ljava/lang/Object;",
-         reinterpret_cast<void*>(AllocObject)},
-        {"CallNonvirtualMethod",
-         "(Ljava/lang/reflect/Executable;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;",
-         reinterpret_cast<void*>(CallNonvirtualMethod)},
-        {"FindClassInitializer",
-         "(Ljava/lang/Class;)Ljava/lang/reflect/Member;",
-         reinterpret_cast<void*>(FindClassInitializer)},
-        {"VisitHeapObjects",
-         "(Ljava/lang/Class;Z)[Ljava/lang/Object;",
-         reinterpret_cast<void*>(VisitHeapObjects)},
+        {
+            .name = "Init",
+            .signature = "()V",
+            .fnPtr = reinterpret_cast<void*>(&Init)
+        },
+        {
+            .name = "Cleanup",
+            .signature = "()V",
+            .fnPtr = reinterpret_cast<void*>(&Cleanup)
+        },
+        {
+            .name = "AllocObject",
+            .signature = "(Ljava/lang/Class;)Ljava/lang/Object;",
+            .fnPtr = reinterpret_cast<void*>(&AllocObject)
+        },
+        {
+            .name = "CallNonvirtualMethod",
+            .signature = "(Ljava/lang/reflect/Executable;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;",
+            .fnPtr = reinterpret_cast<void*>(&CallNonvirtualMethod)
+        },
+        {
+            .name = "FindClassInitializer",
+            .signature = "(Ljava/lang/Class;)Ljava/lang/reflect/Member;",
+            .fnPtr = reinterpret_cast<void*>(&FindClassInitializer)
+        },
+        {
+            .name = "VisitHeapObjects",
+            .signature = "(Ljava/lang/Class;Z)[Ljava/lang/Object;",
+            .fnPtr = reinterpret_cast<void*>(&VisitHeapObjects)
+        },
     };
 
     auto result = env->RegisterNatives(bridge, methods, std::size(methods));
