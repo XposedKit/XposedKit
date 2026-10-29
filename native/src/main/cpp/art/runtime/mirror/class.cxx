@@ -1,5 +1,7 @@
 module;
 
+#include <cstdint>
+
 #if defined(__LP64__)
 #define SIZE_T_MANGLE "m"
 #else
