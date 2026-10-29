@@ -124,6 +124,16 @@ static jobject JNICALL CallNonvirtualMethod(JNIEnv* env, jclass,
     return nullptr;
 }
 
+static jlong JNICALL CreateXmlParseState(JNIEnv* env, jclass,
+                                         jstring entries) {
+    if (!entries) {
+        env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"), "entries is null");
+        return 0;
+    }
+
+    return 0L;
+}
+
 static jobject JNICALL FindClassInitializer(JNIEnv* env, jclass,
                                             jclass clazz) {
     if (!clazz) {
@@ -201,6 +211,11 @@ JNI_OnLoad(JavaVM* vm, void*) {
             .name = "CallNonvirtualMethod",
             .signature = "(Ljava/lang/reflect/Executable;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;",
             .fnPtr = reinterpret_cast<void*>(&CallNonvirtualMethod)
+        },
+        {
+            .name = "CreateXmlParseState",
+            .signature = "(Ljava/lang/String;)J",
+            .fnPtr = reinterpret_cast<void*>(&CreateXmlParseState)
         },
         {
             .name = "FindClassInitializer",
