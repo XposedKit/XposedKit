@@ -125,9 +125,9 @@ static jobject JNICALL CallNonvirtualMethod(JNIEnv* env, jclass,
 }
 
 static jlong JNICALL CreateXmlParseState(JNIEnv* env, jclass,
-                                         jstring entries) {
-    if (!entries) {
-        env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"), "entries is null");
+                                         jbyteArray axml) {
+    if (!axml) {
+        env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"), "axml is null");
         return 0;
     }
 

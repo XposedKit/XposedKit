@@ -15,8 +15,6 @@ import cc.meteormc.xposedkit.nativelib.NativeBridge
 import cc.meteormc.xposedkit.new
 import cc.meteormc.xposedkit.put
 import cc.meteormc.xposedkit.reflect
-import org.json.JSONArray
-import org.json.JSONObject
 import org.w3c.dom.Document
 import org.w3c.dom.Node
 import org.xmlpull.v1.XmlPullParser
@@ -103,9 +101,9 @@ object RuntimeXmlResource {
             }
 
             if (valueData == null || valueType == null) {
-                val compiledValue = compileValue(context, attributeId)
-                valueData = compiledValue.data
-                valueType = compiledValue.type
+                val parsedValue = parseValue(context, attributeId)
+                valueData = parsedValue.data
+                valueType = parsedValue.type
             }
         }
 
@@ -115,16 +113,6 @@ object RuntimeXmlResource {
             require(attributeId != 0) { "Attribute ID must not be 0" }
             require(valueData != null) { "Value data must not be null" }
             require(valueType != null) { "Value type must not be null" }
-        }
-
-        internal fun writeTo(out: JSONObject) {
-            check()
-            out.put("namespace", namespace)
-            out.put("name", name)
-            out.put("value", value)
-            out.put("attributeId", attributeId)
-            out.put("valueData", valueData)
-            out.put("valueType", valueType)
         }
     }
 
@@ -148,21 +136,6 @@ object RuntimeXmlResource {
 
         fun check() {
             require(name != null) { "Element name must not be null" }
-        }
-
-        internal fun writeTo(out: JSONObject) {
-            check()
-            out.put("name", name)
-            out.put("attributes", JSONArray().apply {
-                for (attr in attributes) {
-                    put(JSONObject().apply { attr.writeTo(this) })
-                }
-            })
-            out.put("children", JSONArray().apply {
-                for (child in children) {
-                    put(JSONObject().apply { child.writeTo(this) })
-                }
-            })
         }
     }
 
@@ -193,8 +166,10 @@ object RuntimeXmlResource {
 
     fun create(element: XmlElement.() -> Unit): XmlResourceParser {
         val xml = XmlElement().apply(element)
-        val json = JSONObject().apply { xml.writeTo(this) }
-        val parseState = NativeBridge.CreateXmlParseState(json.toString())
+        xml.check()
+
+        val axml = compileAXML(xml)
+        val parseState = NativeBridge.CreateXmlParseState(axml)
         val xmlBlock = xmlBlockClass.allocate().apply {
             val stringBlock = StringBlock(stringBlockMethod.call(null, parseState), false)
             stringsField.put(this, stringBlock)
@@ -247,10 +222,10 @@ object RuntimeXmlResource {
         return id
     }
 
-    private data class CompiledValue(val data: Int, val type: Int)
+    private data class ParsedValue(val data: Int, val type: Int)
 
-    private infix fun Int.compileTo(type: Int): CompiledValue {
-        return CompiledValue(this, type)
+    private infix fun Int.parseTo(type: Int): ParsedValue {
+        return ParsedValue(this, type)
     }
 
     private fun encodeComplex(value: Float, unit: Int): Int {
@@ -303,7 +278,7 @@ object RuntimeXmlResource {
         return pack(value.roundToInt(), TypedValue.COMPLEX_RADIX_23p0)
     }
 
-    private fun XmlAttribute.compileValue(context: Context, attributeId: Int): CompiledValue {
+    private fun XmlAttribute.parseValue(context: Context, attributeId: Int): ParsedValue {
         val value = value!!.trim()
         parseReference(context, value)?.let { return it }
         parseEnum(context, attributeId, value)?.let { return it }
@@ -314,10 +289,10 @@ object RuntimeXmlResource {
         parseInt(value)?.let { return it }
         parseFloat(value)?.let { return it }
         parseHex(value)?.let { return it }
-        return 0 compileTo TypedValue.TYPE_STRING
+        return 0 parseTo TypedValue.TYPE_STRING
     }
 
-    private fun parseReference(context: Context, value: String): CompiledValue? {
+    private fun parseReference(context: Context, value: String): ParsedValue? {
         if (value.length <= 1) return null
         val isAttr = if (value.startsWith("@")) {
             if (value.startsWith("@+")) {
@@ -332,7 +307,7 @@ object RuntimeXmlResource {
         }
 
         val token = value.substring(1)
-        if (token == "null") return 0 compileTo TypedValue.TYPE_NULL
+        if (token == "null") return 0 parseTo TypedValue.TYPE_NULL
 
         val colon = token.indexOf(':')
         var resource = token
@@ -356,10 +331,10 @@ object RuntimeXmlResource {
 
         val name = resource.substring(slash + 1)
         val id = context.resolveIdentifier(name, resType, packageName)
-        return id compileTo dataType
+        return id parseTo dataType
     }
 
-    private fun parseEnum(context: Context, attributeId: Int, value: String): CompiledValue? {
+    private fun parseEnum(context: Context, attributeId: Int, value: String): ParsedValue? {
         val resources = context.resources
         val assets = resources.assets
         // 使用隐藏API来查找bag中的枚举项定义
@@ -390,16 +365,16 @@ object RuntimeXmlResource {
                 ?: throw IllegalArgumentException("Unknown enum value '$part' for attribute ID $attributeId")
             acc or enumValue
         }
-        return data compileTo TypedValue.TYPE_INT_DEC
+        return data parseTo TypedValue.TYPE_INT_DEC
     }
 
-    private fun parseBoolean(value: String): CompiledValue? {
+    private fun parseBoolean(value: String): ParsedValue? {
         val booleanValue = value.lowercase().toBooleanStrictOrNull() ?: return null
         val data = if (booleanValue) 1 else 0
-        return data compileTo TypedValue.TYPE_INT_BOOLEAN
+        return data parseTo TypedValue.TYPE_INT_BOOLEAN
     }
 
-    private fun parseColor(value: String): CompiledValue? {
+    private fun parseColor(value: String): ParsedValue? {
         if (!value.startsWith('#')) return null
         val digits = value.substring(1)
             .map { it.digitToIntOrNull(16) ?: return null }
@@ -432,10 +407,10 @@ object RuntimeXmlResource {
 
             else -> return null
         }
-        return data compileTo TypedValue.TYPE_INT_COLOR_ARGB8
+        return data parseTo TypedValue.TYPE_INT_COLOR_ARGB8
     }
 
-    private fun parseDimension(value: String): CompiledValue? {
+    private fun parseDimension(value: String): ParsedValue? {
         val (suffix, unit) = unitMapping.entries
             .firstOrNull { value.endsWith(it.key) }
             ?: return null
@@ -445,10 +420,10 @@ object RuntimeXmlResource {
             ?.takeIf { it.isFinite() }
             ?: return null
         val complex = encodeComplex(number, unit)
-        return complex compileTo TypedValue.TYPE_DIMENSION
+        return complex parseTo TypedValue.TYPE_DIMENSION
     }
 
-    private fun parseFraction(value: String): CompiledValue? {
+    private fun parseFraction(value: String): ParsedValue? {
         val unit: Int
         val number = when {
             value.endsWith("%") -> {
@@ -470,20 +445,20 @@ object RuntimeXmlResource {
         // 因此50%将被编码为0.5 而不是50
         val ratio = percentage / 100f
         val complex = encodeComplex(ratio, unit)
-        return complex compileTo TypedValue.TYPE_FRACTION
+        return complex parseTo TypedValue.TYPE_FRACTION
     }
 
-    private fun parseInt(value: String): CompiledValue? {
+    private fun parseInt(value: String): ParsedValue? {
         val intValue = value.toIntOrNull() ?: return null
-        return intValue compileTo TypedValue.TYPE_INT_DEC
+        return intValue parseTo TypedValue.TYPE_INT_DEC
     }
 
-    private fun parseFloat(value: String): CompiledValue? {
+    private fun parseFloat(value: String): ParsedValue? {
         val floatValue = value.toFloatOrNull()?.takeIf { it.isFinite() } ?: return null
-        return floatValue.toRawBits() compileTo TypedValue.TYPE_FLOAT
+        return floatValue.toRawBits() parseTo TypedValue.TYPE_FLOAT
     }
 
-    private fun parseHex(value: String): CompiledValue? {
+    private fun parseHex(value: String): ParsedValue? {
         if (!value.startsWith("0x", true)) {
             return null
         }
@@ -492,6 +467,10 @@ object RuntimeXmlResource {
             .drop(2)
             .toLongOrNull(16)
             ?: return null
-        return longValue.toInt() compileTo TypedValue.TYPE_INT_HEX
+        return longValue.toInt() parseTo TypedValue.TYPE_INT_HEX
+    }
+
+    private fun compileAXML(xml: XmlElement): ByteArray {
+
     }
 }
