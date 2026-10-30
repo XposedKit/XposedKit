@@ -8,7 +8,6 @@ import android.content.res.XmlBlock
 import android.content.res.XmlResourceParser
 import android.os.Build
 import android.util.TypedValue
-import cc.meteormc.xposedkit.XLog
 import cc.meteormc.xposedkit.allocate
 import cc.meteormc.xposedkit.call
 import cc.meteormc.xposedkit.nativelib.NativeBridge
@@ -17,6 +16,8 @@ import cc.meteormc.xposedkit.put
 import cc.meteormc.xposedkit.reflect
 import org.json.JSONArray
 import org.json.JSONObject
+import org.w3c.dom.Document
+import org.w3c.dom.Node
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import kotlin.math.abs
@@ -74,32 +75,123 @@ object RuntimeXmlResource {
         }
     }
 
-    data class Entry(
-        val namespace: String? = null,
-        val name: String,
-        val value: String
-    )
-
-    fun of(context: Context, vararg entries: Entry): XmlResourceParser {
-        val json = JSONArray()
-        for (entry in entries) {
-            val attributeId = entry.resolveAttribute(context) ?: continue
-            val compiledValue = try {
-                entry.compileValue(context, attributeId)
-            } catch (e: Exception) {
-                XLog.w(TAG, "Failed to compile value for attribute ${entry.name}, skipping it", e)
-                continue
+    @ConsistentCopyVisibility
+    data class XmlAttribute @PublishedApi internal constructor(
+        var namespace: String? = null,
+        var name: String? = null,
+        var value: String? = null,
+        var attributeId: Int = 0/*Resources.ID_NULL*/,
+        var valueData: Int? = null,
+        var valueType: Int? = null
+    ) {
+        fun resolve(context: Context) {
+            if (name == null || value == null) {
+                throw IllegalStateException("Name and value must be set before resolving!")
             }
-            val obj = JSONObject()
-            obj.put("namespace", entry.namespace ?: JSONObject.NULL)
-            obj.put("name", entry.name)
-            obj.put("value", entry.value)
-            obj.put("attributeId", attributeId)
-            obj.put("valueResource", compiledValue.data)
-            obj.put("valueType", compiledValue.type)
-            json.put(obj)
+
+            if (attributeId == 0) {
+                val ns = namespace
+                val packageName = if (ns != null && ns.startsWith("$RESOURCE_NS_PREFIX/")) {
+                    ns.removePrefix("$RESOURCE_NS_PREFIX/")
+                } else {
+                    context.packageName
+                }
+
+                attributeId = context.resolveIdentifier(name!!, "attr", packageName)
+            }
+
+            if (valueData == null || valueType == null) {
+                val compiledValue = compileValue(context, attributeId)
+                valueData = compiledValue.data
+                valueType = compiledValue.type
+            }
         }
 
+        fun check() {
+            require(name != null) { "Attribute name must not be null" }
+            require(value != null) { "Attribute value must not be null" }
+            require(attributeId != 0) { "Attribute ID must not be 0" }
+            require(valueData != null) { "Value data must not be null" }
+            require(valueType != null) { "Value type must not be null" }
+        }
+
+        internal fun writeTo(out: JSONObject) {
+            check()
+            out.put("namespace", namespace)
+            out.put("name", name)
+            out.put("value", value)
+            out.put("attributeId", attributeId)
+            out.put("valueData", valueData)
+            out.put("valueType", valueType)
+        }
+    }
+
+    @ConsistentCopyVisibility
+    data class XmlElement @PublishedApi internal constructor(
+        var name: String? = null,
+        val attributes: MutableList<XmlAttribute> = mutableListOf(),
+        val children: MutableList<XmlElement> = mutableListOf()
+    ) {
+        inline fun attribute(block: XmlAttribute.() -> Unit) {
+            val attr = XmlAttribute().apply(block)
+            attr.check()
+            attributes.add(attr)
+        }
+
+        inline fun child(block: XmlElement.() -> Unit) {
+            val child = XmlElement().apply(block)
+            child.check()
+            children.add(child)
+        }
+
+        fun check() {
+            require(name != null) { "Element name must not be null" }
+        }
+
+        internal fun writeTo(out: JSONObject) {
+            check()
+            out.put("name", name)
+            out.put("attributes", JSONArray().apply {
+                for (attr in attributes) {
+                    put(JSONObject().apply { attr.writeTo(this) })
+                }
+            })
+            out.put("children", JSONArray().apply {
+                for (child in children) {
+                    put(JSONObject().apply { child.writeTo(this) })
+                }
+            })
+        }
+    }
+
+    fun create(context: Context, document: Document): XmlResourceParser {
+        fun XmlElement.fromDom(node: Node) {
+            name = node.localName
+
+            val attrs = node.attributes
+            for (i in 0 until attrs.length) {
+                val attr = attrs.item(i)
+                attribute {
+                    namespace = attr.namespaceURI
+                    name = attr.localName
+                    value = attr.nodeValue
+                    resolve(context)
+                }
+            }
+
+            val childNodes = node.childNodes
+            for (i in 0 until childNodes.length) {
+                val child = childNodes.item(i)
+                child { fromDom(child) }
+            }
+        }
+
+        return create { fromDom(document.documentElement) }
+    }
+
+    fun create(element: XmlElement.() -> Unit): XmlResourceParser {
+        val xml = XmlElement().apply(element)
+        val json = JSONObject().apply { xml.writeTo(this) }
         val parseState = NativeBridge.CreateXmlParseState(json.toString())
         val xmlBlock = xmlBlockClass.allocate().apply {
             val stringBlock = StringBlock(stringBlockMethod.call(null, parseState), false)
@@ -131,7 +223,7 @@ object RuntimeXmlResource {
     }
 
     @SuppressLint("DiscouragedApi")
-    private fun Context.resolveIdentifier(name: String, type: String?, pkg: String?): Int? {
+    private fun Context.resolveIdentifier(name: String, type: String?, pkg: String?): Int {
         val id = this.resources.getIdentifier(name, type, pkg)
         if (id == 0) {
             val message = buildString {
@@ -139,21 +231,10 @@ object RuntimeXmlResource {
                 if (type != null) append(" of type $type")
                 if (pkg != null) append(" in package $pkg")
             }
-            XLog.w(TAG, message)
-            return null
+            throw IllegalArgumentException(message)
         }
 
         return id
-    }
-
-    private fun Entry.resolveAttribute(context: Context): Int? {
-        val packageName = if (namespace != null && namespace.startsWith("$RESOURCE_NS_PREFIX/")) {
-            namespace.removePrefix("$RESOURCE_NS_PREFIX/")
-        } else {
-            context.packageName
-        }
-
-        return context.resolveIdentifier(name, "attr", packageName)
     }
 
     private data class CompiledValue(val data: Int, val type: Int)
@@ -212,8 +293,8 @@ object RuntimeXmlResource {
         return pack(value.roundToInt(), TypedValue.COMPLEX_RADIX_23p0)
     }
 
-    private fun Entry.compileValue(context: Context, attributeId: Int): CompiledValue {
-        val value = value.trim()
+    private fun XmlAttribute.compileValue(context: Context, attributeId: Int): CompiledValue {
+        val value = value!!.trim()
         parseReference(context, value)?.let { return it }
         parseEnum(context, attributeId, value)?.let { return it }
         parseBoolean(value)?.let { return it }
@@ -264,7 +345,7 @@ object RuntimeXmlResource {
         }
 
         val name = resource.substring(slash + 1)
-        val id = context.resolveIdentifier(name, resType, packageName) ?: return null
+        val id = context.resolveIdentifier(name, resType, packageName)
         return id compileTo dataType
     }
 
