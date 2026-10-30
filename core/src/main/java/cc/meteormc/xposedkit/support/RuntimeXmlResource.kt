@@ -7,6 +7,7 @@ import android.content.res.StringBlock
 import android.content.res.XmlBlock
 import android.content.res.XmlResourceParser
 import android.os.Build
+import android.util.AttributeSet
 import android.util.TypedValue
 import cc.meteormc.xposedkit.allocate
 import cc.meteormc.xposedkit.call
@@ -18,6 +19,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.w3c.dom.Document
 import org.w3c.dom.Node
+import org.xmlpull.v1.XmlPullParser
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import kotlin.math.abs
@@ -44,8 +46,8 @@ object RuntimeXmlResource {
     private val attrsMethod: Method
     private val bagValueMethod: Method
 
-    private val xmlBlockClass: Class<*>
     private val nativeStateClass: Class<*>?
+    private val xmlBlockClass: Class<*>
     private val stringBlockMethod: Method
     private val openCountField: Field
     private val stateField: Field?
@@ -62,15 +64,15 @@ object RuntimeXmlResource {
             stringsField = field("mStrings")!!
 
             if (isSdk372) {
+                stateField = field("mState")
                 nestedClass("NativeState")!!.reflect {
                     nativeStateClass = type
                     openCountField = field("mOpenCount")!!
                 }
-                stateField = field("mState")
             } else {
+                stateField = null
                 nativeStateClass = null
                 openCountField = field("mOpenCount")!!
-                stateField = null
             }
         }
     }
@@ -197,9 +199,9 @@ object RuntimeXmlResource {
             val stringBlock = StringBlock(stringBlockMethod.call(null, parseState), false)
             stringsField.put(this, stringBlock)
 
-            // 当这个值归零后会触发 XmlBlock.close() 的内部逻辑
+            // 当 openCount 归零后会触发 XmlBlock.close() 的内部逻辑
             // 并且因为 XmlBlock 是一个未初始化的不稳定对象 导致这个操作必定会引发崩溃
-            // 由于每次创建 XmlBlock.Parser 时都会累加 mOpenCount
+            // 由于每次创建 XmlBlock.Parser 时都会累加 mOpenCount 字段
             // 为了防止这种情况 我们可以为这个字段设置一个很小的值来避免
             if (isSdk372) {
                 val state = nativeStateClass!!.allocate()
@@ -220,6 +222,14 @@ object RuntimeXmlResource {
                 xmlBlock
             )
         }
+    }
+
+    fun XmlResourceParser.asAttributeSet(): AttributeSet {
+        do {
+            if (eventType != XmlPullParser.START_TAG) continue
+            return this
+        } while (next() != XmlPullParser.END_DOCUMENT)
+        throw IllegalStateException("No start tag found in the XML parser")
     }
 
     @SuppressLint("DiscouragedApi")
