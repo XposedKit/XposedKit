@@ -9,23 +9,24 @@ import android.content.res.XmlResourceParser
 import android.os.Build
 import android.util.AttributeSet
 import android.util.TypedValue
+import androidx.annotation.CallSuper
+import cc.meteormc.xposedkit.XLog
 import cc.meteormc.xposedkit.allocate
 import cc.meteormc.xposedkit.call
-import cc.meteormc.xposedkit.nativelib.NativeBridge
 import cc.meteormc.xposedkit.new
 import cc.meteormc.xposedkit.put
 import cc.meteormc.xposedkit.reflect
 import org.w3c.dom.Document
 import org.w3c.dom.Node
-import org.xmlpull.v1.XmlPullParser
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalUnsignedTypes::class)
 object RuntimeXmlResource {
-    private const val TAG = "RuntimeXmlResource"
-
     const val RESOURCE_NS_PREFIX = "http://schemas.android.com/apk/res"
     const val ANDROID_NS = "${RESOURCE_NS_PREFIX}/android"
     const val RES_AUTO_NS = "${RESOURCE_NS_PREFIX}-auto"
@@ -169,7 +170,8 @@ object RuntimeXmlResource {
         xml.check()
 
         val axml = compileAXML(xml)
-        val parseState = NativeBridge.CreateXmlParseState(axml)
+        XLog.d("RuntimeXmlResource", axml.joinToString(" ") { "%02X".format(it.toInt() and 0xFF) })
+        val parseState = /*NativeBridge.CreateXmlParseState(axml)*/0L
         val xmlBlock = xmlBlockClass.allocate().apply {
             val stringBlock = StringBlock(stringBlockMethod.call(null, parseState), false)
             stringsField.put(this, stringBlock)
@@ -201,9 +203,9 @@ object RuntimeXmlResource {
 
     fun XmlResourceParser.asAttributeSet(): AttributeSet {
         do {
-            if (eventType != XmlPullParser.START_TAG) continue
+            if (eventType != XmlResourceParser.START_TAG) continue
             return this
-        } while (next() != XmlPullParser.END_DOCUMENT)
+        } while (next() != XmlResourceParser.END_DOCUMENT)
         throw IllegalStateException("No start tag found in the XML parser")
     }
 
@@ -470,7 +472,492 @@ object RuntimeXmlResource {
         return longValue.toInt() parseTo TypedValue.TYPE_INT_HEX
     }
 
-    private fun compileAXML(xml: XmlElement): ByteArray {
+    private val EMPTY_REF = ResStringPool.Ref((-1).toUInt())
+    private const val BASE_HEADER_SIZE = 2 + 2 + 4
 
+    private interface Serializer {
+        val bodySize: Int
+
+        fun serialize(out: DataOutputStream)
+
+        fun DataOutputStream.align4() {
+            while (size() % 4 != 0) { write(0) }
+        }
+
+        fun DataOutputStream.writeUByte(value: UByte) {
+            writeByte(value.toInt())
+        }
+
+        fun DataOutputStream.writeUShort(value: UShort) {
+            writeShort(value.toInt())
+        }
+
+        fun DataOutputStream.writeUInt(value: UInt) {
+            writeInt(value.toInt())
+        }
+
+        fun DataOutputStream.writeULong(value: ULong) {
+            writeLong(value.toLong())
+        }
+    }
+
+    private class ResValue(
+        val dataType: UByte, // uint8_t
+        val data: UInt // uint32_t
+    ) : Serializer {
+        override val bodySize: Int
+            get() = UShort.SIZE_BYTES + UInt.SIZE_BYTES
+
+        override fun serialize(out: DataOutputStream) {
+            out.writeUShort(8u) // size=2+1+1+4
+            out.writeUByte(0.toUByte()) // Always set to 0
+            out.writeUByte(dataType)
+            out.writeUInt(data)
+        }
+    }
+
+    private open class ResChunkHeader(
+        val type: UShort, // uint16_t
+        val headerSize: UShort, // uint16_t
+        var size: UInt = 0u // uint32_t
+    ) : Serializer {
+        override val bodySize: Int
+            get() = throw UnsupportedOperationException("ResChunkHeader does not have a body size")
+
+        companion object {
+            const val RES_NULL_TYPE: UShort = 0x0000u
+            const val RES_STRING_POOL_TYPE: UShort = 0x0001u
+            const val RES_TABLE_TYPE: UShort = 0x0002u
+            const val RES_XML_TYPE: UShort = 0x0003u
+
+            const val RES_XML_FIRST_CHUNK_TYPE: UShort = 0x0100u
+            const val RES_XML_START_NAMESPACE_TYPE: UShort = 0x0100u
+            const val RES_XML_END_NAMESPACE_TYPE: UShort = 0x0101u
+            const val RES_XML_START_ELEMENT_TYPE: UShort = 0x0102u
+            const val RES_XML_END_ELEMENT_TYPE: UShort = 0x0103u
+            const val RES_XML_CDATA_TYPE: UShort = 0x0104u
+            const val RES_XML_LAST_CHUNK_TYPE: UShort = 0x017fu
+            const val RES_XML_RESOURCE_MAP_TYPE: UShort = 0x0180u
+
+            const val RES_TABLE_PACKAGE_TYPE: UShort = 0x0200u
+            const val RES_TABLE_TYPE_TYPE: UShort = 0x0201u
+            const val RES_TABLE_TYPE_SPEC_TYPE: UShort = 0x0202u
+            const val RES_TABLE_LIBRARY_TYPE: UShort = 0x0203u
+            const val RES_TABLE_OVERLAYABLE_TYPE: UShort = 0x0204u
+            const val RES_TABLE_OVERLAYABLE_POLICY_TYPE: UShort = 0x0205u
+            const val RES_TABLE_STAGED_ALIAS_TYPE: UShort = 0x0206u
+        }
+
+        @CallSuper
+        override fun serialize(out: DataOutputStream) {
+            out.writeUShort(type)
+            out.writeUShort(headerSize)
+            out.writeUInt(size)
+        }
+
+        fun resize(size: Int) {
+            this.size = headerSize + size.toUInt()
+        }
+    }
+
+    private class ResXMLTree(
+        val header: Header,
+        val strings: ResStringPool,
+        val ids: ResIdPool,
+        val nodes: Array<ResXMLTree.Node>
+    ) : Serializer {
+        override val bodySize: Int
+            get() {
+                var result = 0
+                result += strings.bodySize
+                result += ids.bodySize
+                result += nodes.sumOf {
+                    result = (result + 3) and -4
+                    it.bodySize
+                }
+                return result
+            }
+
+        override fun serialize(out: DataOutputStream) {
+            header.resize(bodySize)
+            header.serialize(out)
+            strings.serialize(out)
+            ids.serialize(out)
+            nodes.forEach {
+                out.align4()
+                it.serialize(out)
+            }
+        }
+
+        class Header : ResChunkHeader(RES_XML_TYPE, BASE_HEADER_SIZE.toUShort())
+
+        interface Ext : Serializer
+
+        class Node(
+            type: UShort,
+            val comment: ResStringPool.Ref,
+            val ext: Ext
+        ) : Serializer {
+            // 这里的headerSize包含Node中除Ext以外的所有数据的大小
+            private val header = ResChunkHeader(type, (BASE_HEADER_SIZE + 4 + 4).toUShort())
+
+            override val bodySize: Int
+                get() = comment.bodySize + ext.bodySize
+
+            override fun serialize(out: DataOutputStream) {
+                header.resize(bodySize)
+                header.serialize(out)
+                out.writeUInt(0u) // lineNumber=0
+                comment.serialize(out)
+                ext.serialize(out)
+            }
+        }
+
+        class NamespaceExt(
+            val prefix: ResStringPool.Ref,
+            val uri: ResStringPool.Ref
+        ) : Ext {
+            override val bodySize: Int
+                get() = prefix.bodySize + uri.bodySize
+
+            override fun serialize(out: DataOutputStream) {
+                prefix.serialize(out)
+                uri.serialize(out)
+            }
+        }
+
+        class StartElementExt(
+            val namespace: ResStringPool.Ref,
+            val name: ResStringPool.Ref,
+            val attributeCount: UShort, // uint16_t
+            val idIndex: UShort, // uint16_t
+            val classIndex: UShort, // uint16_t
+            val styleIndex: UShort, // uint16_t
+            val attributes: Array<Attribute>
+        ) : Ext {
+            override val bodySize: Int
+                get() = namespace.bodySize + name.bodySize + UShort.SIZE_BYTES * 4 + attributes.sumOf { it.bodySize }
+
+            override fun serialize(out: DataOutputStream) {
+                namespace.serialize(out)
+                name.serialize(out)
+                out.writeUShort(20u) // attributeStart=4*2+2*6
+                out.writeUShort(20u) // attributeSize=4*3+(2+1+1+4)
+                out.writeUShort(attributeCount)
+                out.writeUShort(idIndex)
+                out.writeUShort(classIndex)
+                out.writeUShort(styleIndex)
+                attributes.forEach { it.serialize(out) }
+            }
+        }
+
+        class EndElementExt(
+            val namespace: ResStringPool.Ref,
+            val name: ResStringPool.Ref
+        ) : Ext {
+            override val bodySize: Int
+                get() = namespace.bodySize + name.bodySize
+
+            override fun serialize(out: DataOutputStream) {
+                namespace.serialize(out)
+                name.serialize(out)
+            }
+        }
+
+        class CdataExt(
+            val data: ResStringPool.Ref,
+            val typedData: ResValue
+        ) : Ext {
+            override val bodySize: Int
+                get() = data.bodySize + typedData.bodySize
+
+            override fun serialize(out: DataOutputStream) {
+                data.serialize(out)
+                typedData.serialize(out)
+            }
+        }
+
+        class Attribute(
+            val namespace: ResStringPool.Ref,
+            val name: ResStringPool.Ref,
+            val rawValue: ResStringPool.Ref,
+            val typedValue: ResValue
+        ) : Serializer {
+            override val bodySize: Int
+                get() {
+                    var result = 0
+                    result += namespace.bodySize
+                    result += name.bodySize
+                    result += rawValue.bodySize
+                    result += typedValue.bodySize
+                    return result
+                }
+
+            override fun serialize(out: DataOutputStream) {
+                namespace.serialize(out)
+                name.serialize(out)
+                rawValue.serialize(out)
+                typedValue.serialize(out)
+            }
+        }
+    }
+
+    private class ResStringPool(
+        val header: Header,
+        val stringOffsets: UIntArray, // uint32_t
+        val styleOffsets: UIntArray, // uint32_t
+        val strings: Array<StringData>,
+        val styles: Array<StyleData>
+    ) : Serializer {
+        private var cachedSize = 0
+        override val bodySize: Int
+            get() = cachedSize.takeIf { it > 0 } ?: calculateLayout()
+
+        override fun serialize(out: DataOutputStream) {
+            header.resize(bodySize)
+            header.serialize(out)
+            stringOffsets.forEach { out.writeUInt(it) }
+            styleOffsets.forEach { out.writeUInt(it) }
+            strings.forEach { it.serialize(out) }
+            out.align4()
+            styles.forEach { it.serialize(out) }
+            out.align4()
+        }
+
+        private fun calculateLayout(): Int {
+            var size = 0
+            val headerSize = header.headerSize
+            fun align() {
+                size = (size + 3) and -4
+            }
+
+            size += stringOffsets.size * UInt.SIZE_BYTES
+            size += styleOffsets.size * UInt.SIZE_BYTES
+            header.stringsStart = headerSize + size.toUInt()
+            size += strings.sumOf { it.bodySize }
+            align()
+            header.stylesStart = headerSize + size.toUInt()
+            size += styles.sumOf { it.bodySize }
+            align()
+            cachedSize = size
+            return size
+        }
+
+        class Header(
+            val stringCount: UInt, // uint32_t
+            val styleCount: UInt, // uint32_t
+            val flags: UInt, // uint32_t
+            var stringsStart: UInt = 0u, // uint32_t
+            var stylesStart: UInt = 0u // uint32_t
+        ) : ResChunkHeader(RES_STRING_POOL_TYPE, (BASE_HEADER_SIZE + 4 * 5).toUShort()) {
+            override fun serialize(out: DataOutputStream) {
+                super.serialize(out)
+                out.writeUInt(stringCount)
+                out.writeUInt(styleCount)
+                out.writeUInt(flags)
+                out.writeUInt(stringsStart)
+                out.writeUInt(stylesStart)
+            }
+
+            object Flags {
+                const val SORTED_FLAG = 1u // 1 << 0
+                const val UTF8_FLAG = 256u // 1 << 8
+            }
+        }
+
+        class Ref(
+            val index: UInt // uint32_t
+        ) : Serializer {
+            override val bodySize: Int
+                get() = UInt.SIZE_BYTES
+
+            override fun serialize(out: DataOutputStream) {
+                out.writeUInt(index)
+            }
+        }
+
+        class StringData(value: String) : Serializer {
+            private val data: ByteArray
+
+            override val bodySize: Int
+                get() = data.size
+
+            init {
+                val utf8 = value.toByteArray(Charsets.UTF_8)
+                val len16 = writeLength(value.length) // UTF-16 length
+                val len8 = writeLength(utf8.size) // UTF-8 length
+
+                val offset1 = len16.size
+                val offset2 = offset1 + len8.size
+                val offset3 = offset2 + utf8.size
+                data = ByteArray(offset3 + 1)
+                len16.copyInto(data)
+                len8.copyInto(data, offset1)
+                utf8.copyInto(data, offset2)
+                data[data.lastIndex] = 0x00
+            }
+
+            override fun serialize(out: DataOutputStream) {
+                out.write(data)
+            }
+
+            private fun writeLength(length: Int): ByteArray {
+                require(length in 0..0x7FFF) {
+                    "Length out of range: $length"
+                }
+
+                return if (length < 0x80) {
+                    byteArrayOf(length.toByte())
+                } else {
+                    byteArrayOf(
+                        ((length shr 8) or 0x80).toByte(),
+                        (length and 0xFF).toByte()
+                    )
+                }
+            }
+        }
+
+        class StyleData : Serializer {
+            override val bodySize: Int
+                get() = 0
+
+            override fun serialize(out: DataOutputStream) {
+
+            }
+        }
+    }
+
+    private class ResIdPool(
+        val header: Header,
+        val resourceIds: UIntArray // uint32_t
+    ) : Serializer {
+        override val bodySize: Int
+            get() = resourceIds.size * UInt.SIZE_BYTES
+
+        override fun serialize(out: DataOutputStream) {
+            header.resize(bodySize)
+            header.serialize(out)
+            resourceIds.forEach { out.writeUInt(it) }
+        }
+
+        class Header : ResChunkHeader(RES_XML_RESOURCE_MAP_TYPE, BASE_HEADER_SIZE.toUShort())
+    }
+
+    private fun compileAXML(xml: XmlElement): ByteArray {
+        val strings = arrayListOf<ResStringPool.StringData>()
+        val stringIndex = HashMap<String, ResStringPool.Ref>()
+        fun compileString(str: String): ResStringPool.Ref {
+            return stringIndex.getOrPut(str) {
+                val idx = strings.size
+                strings.add(ResStringPool.StringData(str))
+                ResStringPool.Ref(idx.toUInt())
+            }
+        }
+
+        val resources = arrayListOf<UInt>()
+        fun compileResource(name: String, id: UInt): ResStringPool.Ref {
+            val ref = compileString(name)
+            val idx = ref.index.toInt()
+            while (resources.size <= idx) { resources.add(0u) }
+            resources[idx] = id
+            return ref
+        }
+
+        val namespaces = arrayListOf<ResXMLTree.NamespaceExt>()
+        val namespaceIndex = HashMap<String, ResStringPool.Ref>()
+        fun compileNamespace(ns: String): ResStringPool.Ref {
+            return namespaceIndex.getOrPut(ns) {
+                val prefix = "ns${namespaces.size}"
+                val ref = compileString(prefix)
+                namespaces.add(ResXMLTree.NamespaceExt(ref, compileString(ns)))
+                ref
+            }
+        }
+
+        val nodes = arrayListOf<ResXMLTree.Node>()
+        fun handleElement(element: XmlElement) {
+            val name = compileString(element.name!!)
+            val attributes = element.attributes.map {
+                val namespace = it.namespace?.let { ns -> compileNamespace(ns) }
+                val dataType = it.valueType!!
+                val data = it.valueData!!
+                ResXMLTree.Attribute(
+                    namespace = namespace ?: EMPTY_REF,
+                    name = compileResource(it.name!!, it.attributeId.toUInt()),
+                    rawValue = compileString(it.value!!),
+                    typedValue = ResValue(dataType.toUByte(), data.toUInt())
+                )
+            }.toTypedArray()
+            nodes += ResXMLTree.Node(
+                type = ResChunkHeader.RES_XML_START_ELEMENT_TYPE,
+                comment = EMPTY_REF,
+                ext = ResXMLTree.StartElementExt(
+                    namespace = EMPTY_REF,
+                    name = name,
+                    attributeCount = attributes.size.toUShort(),
+                    idIndex = 0u,
+                    classIndex = 0u,
+                    styleIndex = 0u,
+                    attributes = attributes
+                )
+            )
+
+            element.children.forEach(::handleElement)
+            nodes += ResXMLTree.Node(
+                type = ResChunkHeader.RES_XML_END_ELEMENT_TYPE,
+                comment = EMPTY_REF,
+                ext = ResXMLTree.EndElementExt(
+                    namespace = EMPTY_REF,
+                    name = name
+                )
+            )
+        }
+        handleElement(xml)
+
+        var stringOffset = 0u
+        val tree = ResXMLTree(
+            header = ResXMLTree.Header(),
+            strings = ResStringPool(
+                ResStringPool.Header(
+                    flags = ResStringPool.Header.Flags.UTF8_FLAG,
+                    stringCount = strings.size.toUInt(),
+                    styleCount = 0u
+                ),
+                stringOffsets = UIntArray(strings.size) {
+                    val off = stringOffset
+                    stringOffset += strings[it].bodySize.toUInt()
+                    off
+                },
+                styleOffsets = uintArrayOf(),
+                strings = strings.toTypedArray(),
+                styles = emptyArray()
+            ),
+            ids = ResIdPool(
+                header = ResIdPool.Header(),
+                resourceIds = resources.toUIntArray()
+            ),
+            nodes = buildList {
+                namespaces.forEach {
+                    ResXMLTree.Node(
+                        type = ResChunkHeader.RES_XML_START_NAMESPACE_TYPE,
+                        comment = EMPTY_REF,
+                        ext = it
+                    )
+                }
+                addAll(nodes)
+                namespaces.asReversed().forEach {
+                    ResXMLTree.Node(
+                        type = ResChunkHeader.RES_XML_END_NAMESPACE_TYPE,
+                        comment = EMPTY_REF,
+                        ext = it
+                    )
+                }
+            }.toTypedArray()
+        )
+        return ByteArrayOutputStream().use {
+            val out = DataOutputStream(it)
+            tree.serialize(out)
+            it.toByteArray()
+        }
     }
 }
