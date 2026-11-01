@@ -214,7 +214,7 @@ JNI_OnLoad(JavaVM* vm, void*) {
         },
         {
             .name = "CreateXmlParseState",
-            .signature = "(Ljava/lang/String;)J",
+            .signature = "([B)J",
             .fnPtr = reinterpret_cast<void*>(&CreateXmlParseState)
         },
         {
