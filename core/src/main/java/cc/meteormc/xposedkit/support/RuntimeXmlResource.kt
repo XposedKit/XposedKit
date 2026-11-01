@@ -19,7 +19,6 @@ import cc.meteormc.xposedkit.reflect
 import org.w3c.dom.Document
 import org.w3c.dom.Node
 import java.io.ByteArrayOutputStream
-import java.io.DataOutputStream
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import kotlin.math.abs
@@ -472,32 +471,31 @@ object RuntimeXmlResource {
         return longValue.toInt() parseTo TypedValue.TYPE_INT_HEX
     }
 
-    private val EMPTY_REF = ResStringPool.Ref((-1).toUInt())
-    private const val BASE_HEADER_SIZE = 2 + 2 + 4
+    private val EMPTY_REF = ResStringPool.Ref(0xFFFFFFFFu)
 
     private interface Serializer {
         val bodySize: Int
 
-        fun serialize(out: DataOutputStream)
+        fun serialize(out: ByteArrayOutputStream)
 
-        fun DataOutputStream.align4() {
+        fun ByteArrayOutputStream.align4() {
             while (size() % 4 != 0) { write(0) }
         }
 
-        fun DataOutputStream.writeUByte(value: UByte) {
-            writeByte(value.toInt())
+        fun ByteArrayOutputStream.writeUByte(value: UByte) {
+            write(value.toInt())
         }
 
-        fun DataOutputStream.writeUShort(value: UShort) {
-            writeShort(value.toInt())
+        fun ByteArrayOutputStream.writeUShort(value: UShort) {
+            write(value.toInt() and 0xFF)
+            write(value.toInt() shr 8 and 0xFF)
         }
 
-        fun DataOutputStream.writeUInt(value: UInt) {
-            writeInt(value.toInt())
-        }
-
-        fun DataOutputStream.writeULong(value: ULong) {
-            writeLong(value.toLong())
+        fun ByteArrayOutputStream.writeUInt(value: UInt) {
+            write(value.toInt() and 0xFF)
+            write(value.toInt() shr 8 and 0xFF)
+            write(value.toInt() shr 16 and 0xFF)
+            write(value.toInt() shr 24 and 0xFF)
         }
     }
 
@@ -508,9 +506,9 @@ object RuntimeXmlResource {
         override val bodySize: Int
             get() = UShort.SIZE_BYTES + UInt.SIZE_BYTES
 
-        override fun serialize(out: DataOutputStream) {
+        override fun serialize(out: ByteArrayOutputStream) {
             out.writeUShort(8u) // size=2+1+1+4
-            out.writeUByte(0.toUByte()) // Always set to 0
+            out.writeUByte(0u) // Always set to 0
             out.writeUByte(dataType)
             out.writeUInt(data)
         }
@@ -525,6 +523,8 @@ object RuntimeXmlResource {
             get() = throw UnsupportedOperationException("ResChunkHeader does not have a body size")
 
         companion object {
+            const val BASE_HEADER_SIZE = 2 + 2 + 4
+
             const val RES_NULL_TYPE: UShort = 0x0000u
             const val RES_STRING_POOL_TYPE: UShort = 0x0001u
             const val RES_TABLE_TYPE: UShort = 0x0002u
@@ -549,7 +549,7 @@ object RuntimeXmlResource {
         }
 
         @CallSuper
-        override fun serialize(out: DataOutputStream) {
+        override fun serialize(out: ByteArrayOutputStream) {
             out.writeUShort(type)
             out.writeUShort(headerSize)
             out.writeUInt(size)
@@ -578,7 +578,7 @@ object RuntimeXmlResource {
                 return result
             }
 
-        override fun serialize(out: DataOutputStream) {
+        override fun serialize(out: ByteArrayOutputStream) {
             header.resize(bodySize)
             header.serialize(out)
             strings.serialize(out)
@@ -599,12 +599,12 @@ object RuntimeXmlResource {
             val ext: Ext
         ) : Serializer {
             // 这里的headerSize包含Node中除Ext以外的所有数据的大小
-            private val header = ResChunkHeader(type, (BASE_HEADER_SIZE + 4 + 4).toUShort())
+            private val header = ResChunkHeader(type, (ResChunkHeader.BASE_HEADER_SIZE + 4 + 4).toUShort())
 
             override val bodySize: Int
                 get() = comment.bodySize + ext.bodySize
 
-            override fun serialize(out: DataOutputStream) {
+            override fun serialize(out: ByteArrayOutputStream) {
                 header.resize(bodySize)
                 header.serialize(out)
                 out.writeUInt(0u) // lineNumber=0
@@ -620,7 +620,7 @@ object RuntimeXmlResource {
             override val bodySize: Int
                 get() = prefix.bodySize + uri.bodySize
 
-            override fun serialize(out: DataOutputStream) {
+            override fun serialize(out: ByteArrayOutputStream) {
                 prefix.serialize(out)
                 uri.serialize(out)
             }
@@ -638,7 +638,7 @@ object RuntimeXmlResource {
             override val bodySize: Int
                 get() = namespace.bodySize + name.bodySize + UShort.SIZE_BYTES * 4 + attributes.sumOf { it.bodySize }
 
-            override fun serialize(out: DataOutputStream) {
+            override fun serialize(out: ByteArrayOutputStream) {
                 namespace.serialize(out)
                 name.serialize(out)
                 out.writeUShort(20u) // attributeStart=4*2+2*6
@@ -658,7 +658,7 @@ object RuntimeXmlResource {
             override val bodySize: Int
                 get() = namespace.bodySize + name.bodySize
 
-            override fun serialize(out: DataOutputStream) {
+            override fun serialize(out: ByteArrayOutputStream) {
                 namespace.serialize(out)
                 name.serialize(out)
             }
@@ -671,7 +671,7 @@ object RuntimeXmlResource {
             override val bodySize: Int
                 get() = data.bodySize + typedData.bodySize
 
-            override fun serialize(out: DataOutputStream) {
+            override fun serialize(out: ByteArrayOutputStream) {
                 data.serialize(out)
                 typedData.serialize(out)
             }
@@ -693,7 +693,7 @@ object RuntimeXmlResource {
                     return result
                 }
 
-            override fun serialize(out: DataOutputStream) {
+            override fun serialize(out: ByteArrayOutputStream) {
                 namespace.serialize(out)
                 name.serialize(out)
                 rawValue.serialize(out)
@@ -713,7 +713,7 @@ object RuntimeXmlResource {
         override val bodySize: Int
             get() = cachedSize.takeIf { it > 0 } ?: calculateLayout()
 
-        override fun serialize(out: DataOutputStream) {
+        override fun serialize(out: ByteArrayOutputStream) {
             header.resize(bodySize)
             header.serialize(out)
             stringOffsets.forEach { out.writeUInt(it) }
@@ -750,7 +750,7 @@ object RuntimeXmlResource {
             var stringsStart: UInt = 0u, // uint32_t
             var stylesStart: UInt = 0u // uint32_t
         ) : ResChunkHeader(RES_STRING_POOL_TYPE, (BASE_HEADER_SIZE + 4 * 5).toUShort()) {
-            override fun serialize(out: DataOutputStream) {
+            override fun serialize(out: ByteArrayOutputStream) {
                 super.serialize(out)
                 out.writeUInt(stringCount)
                 out.writeUInt(styleCount)
@@ -771,7 +771,7 @@ object RuntimeXmlResource {
             override val bodySize: Int
                 get() = UInt.SIZE_BYTES
 
-            override fun serialize(out: DataOutputStream) {
+            override fun serialize(out: ByteArrayOutputStream) {
                 out.writeUInt(index)
             }
         }
@@ -797,7 +797,7 @@ object RuntimeXmlResource {
                 data[data.lastIndex] = 0x00
             }
 
-            override fun serialize(out: DataOutputStream) {
+            override fun serialize(out: ByteArrayOutputStream) {
                 out.write(data)
             }
 
@@ -821,7 +821,7 @@ object RuntimeXmlResource {
             override val bodySize: Int
                 get() = 0
 
-            override fun serialize(out: DataOutputStream) {
+            override fun serialize(out: ByteArrayOutputStream) {
 
             }
         }
@@ -834,7 +834,7 @@ object RuntimeXmlResource {
         override val bodySize: Int
             get() = resourceIds.size * UInt.SIZE_BYTES
 
-        override fun serialize(out: DataOutputStream) {
+        override fun serialize(out: ByteArrayOutputStream) {
             header.resize(bodySize)
             header.serialize(out)
             resourceIds.forEach { out.writeUInt(it) }
@@ -955,8 +955,7 @@ object RuntimeXmlResource {
             }.toTypedArray()
         )
         return ByteArrayOutputStream().use {
-            val out = DataOutputStream(it)
-            tree.serialize(out)
+            tree.serialize(it)
             it.toByteArray()
         }
     }
