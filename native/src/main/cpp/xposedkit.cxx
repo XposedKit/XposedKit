@@ -1,6 +1,7 @@
 module;
 
 #include <jni.h>
+#include <xdl.h>
 #include <vector>
 
 export module xposedkit;
@@ -13,6 +14,7 @@ import :thread;
 
 import :java_primitive;
 import :jni_helper;
+import :xdl_guard;
 
 namespace xposedkit {
 
@@ -131,7 +133,39 @@ static jlong JNICALL CreateXmlParseState(JNIEnv* env, jclass,
         return 0;
     }
 
-    return 0L;
+    const XdlGuard xdl("libandroidfw.so");
+    auto constructor = xdl.sym<void (*)(void*)>("_ZN7android10ResXMLTreeC1Ev");
+    auto set_to = xdl.sym<int32_t (*)(void*, const void*, size_t, bool)>("_ZN7android10ResXMLTree5setToEPKvmb");
+    if (!constructor || !set_to) {
+        env->ThrowNew(env->FindClass("java/lang/UnsatisfiedLinkError"), "Required ResXMLTree symbols are unavailable");
+        return 0;
+    }
+
+    constexpr size_t kBufferOffset = 4096;
+    auto storage = operator new(kBufferOffset, std::nothrow);
+    if (!storage) {
+        env->ThrowNew(env->FindClass("java/lang/OutOfMemoryError"), "Failed to allocate memory for ResXMLTree");
+        return 0;
+    }
+
+    constructor(storage);
+    auto length = env->GetArrayLength(axml);
+    auto data = env->GetByteArrayElements(axml, nullptr);
+    if (!data || env->ExceptionCheck()) {
+        operator delete(storage);
+        return 0;
+    }
+
+    auto status = set_to(storage, data, length, true);
+    env->ReleaseByteArrayElements(axml, data, JNI_ABORT);
+    if (status != 0) {
+        operator delete(storage);
+        auto message = "Invalid binary XML data: " + std::to_string(status);
+        env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"), message.c_str());
+        return 0;
+    }
+
+    return reinterpret_cast<jlong>(storage);
 }
 
 static jobject JNICALL FindClassInitializer(JNIEnv* env, jclass,

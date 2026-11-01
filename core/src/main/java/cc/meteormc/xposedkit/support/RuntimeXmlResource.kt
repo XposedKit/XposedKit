@@ -13,6 +13,7 @@ import androidx.annotation.CallSuper
 import cc.meteormc.xposedkit.XLog
 import cc.meteormc.xposedkit.allocate
 import cc.meteormc.xposedkit.call
+import cc.meteormc.xposedkit.nativelib.NativeBridge
 import cc.meteormc.xposedkit.new
 import cc.meteormc.xposedkit.put
 import cc.meteormc.xposedkit.reflect
@@ -47,7 +48,7 @@ object RuntimeXmlResource {
     private val nativeStateClass: Class<*>?
     private val xmlBlockClass: Class<*>
     private val stringBlockMethod: Method
-    private val openCountField: Field
+    private val openCountField: Field?
     private val stateField: Field?
     private val stringsField: Field
 
@@ -63,9 +64,9 @@ object RuntimeXmlResource {
 
             if (isSdk372) {
                 stateField = field("mState")
+                openCountField = null
                 nestedClass("NativeState")!!.reflect {
                     nativeStateClass = type
-                    openCountField = field("mOpenCount")!!
                 }
             } else {
                 stateField = null
@@ -170,21 +171,19 @@ object RuntimeXmlResource {
 
         val axml = compileAXML(xml)
         XLog.d("RuntimeXmlResource", axml.joinToString(" ") { "%02X".format(it.toInt() and 0xFF) })
-        val parseState = /*NativeBridge.CreateXmlParseState(axml)*/0L
+        val parseState = NativeBridge.CreateXmlParseState(axml)
         val xmlBlock = xmlBlockClass.allocate().apply {
             val stringBlock = StringBlock(stringBlockMethod.call(null, parseState), false)
             stringsField.put(this, stringBlock)
 
-            // 当 openCount 归零后会触发 XmlBlock.close() 的内部逻辑
-            // 并且因为 XmlBlock 是一个未初始化的不稳定对象 导致这个操作必定会引发崩溃
-            // 由于每次创建 XmlBlock.Parser 时都会累加 mOpenCount 字段
-            // 为了防止这种情况 我们可以为这个字段设置一个很小的值来避免
             if (isSdk372) {
-                val state = nativeStateClass!!.allocate()
-                openCountField.put(state, Int.MIN_VALUE)
-                stateField!!.put(this, state)
+                stateField!!.put(this, nativeStateClass!!.allocate())
             } else {
-                openCountField.put(this, Int.MIN_VALUE)
+                // 当 openCount 归零后会触发 XmlBlock.close() 的内部逻辑
+                // 并且因为 XmlBlock 是一个未初始化的不稳定对象 导致这个操作必定会引发崩溃
+                // 由于每次创建 XmlBlock.Parser 时都会累加 mOpenCount 字段
+                // 为了防止这种情况 我们可以为这个字段设置一个很小的值来避免
+                openCountField!!.put(this, Int.MIN_VALUE)
             }
         }
         return XmlBlock.Parser::class.reflect {
