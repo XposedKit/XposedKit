@@ -32,3 +32,6 @@
 -dontwarn android.content.pm.PackageParser$Permission
 -dontwarn android.content.pm.PackageParser$PackageParserException
 -dontwarn android.content.res.ApkAssets
+-dontwarn android.content.res.StringBlock
+-dontwarn android.content.res.XmlBlock
+-dontwarn android.content.res.XmlBlock$Parser
