@@ -16,12 +16,14 @@ import cc.meteormc.xposedkit.nativelib.NativeBridge
 import cc.meteormc.xposedkit.new
 import cc.meteormc.xposedkit.put
 import cc.meteormc.xposedkit.reflect
-import org.w3c.dom.Document
 import org.w3c.dom.Node
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.InputStream
 import java.io.OutputStream
 import java.lang.reflect.Field
 import java.lang.reflect.Method
+import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -135,13 +137,7 @@ object RuntimeXmlResource {
             children.add(child)
         }
 
-        fun check() {
-            require(name != null) { "Element name must not be null" }
-        }
-    }
-
-    fun create(context: Context, document: Document): XmlResourceParser {
-        fun XmlElement.fromDom(node: Node) {
+        fun fromDom(context: Context, node: Node) {
             name = node.localName
 
             val attrs = node.attributes
@@ -158,11 +154,29 @@ object RuntimeXmlResource {
             val childNodes = node.childNodes
             for (i in 0 until childNodes.length) {
                 val child = childNodes.item(i)
-                child { fromDom(child) }
+                child { fromDom(context, child) }
             }
         }
 
-        return create { fromDom(document.documentElement) }
+        fun fromStream(context: Context, stream: InputStream) {
+            val factory = DocumentBuilderFactory.newInstance()
+            factory.isXIncludeAware = false
+            factory.isExpandEntityReferences = false
+
+            val builder = factory.newDocumentBuilder()
+            val document = builder.parse(stream)
+            fromDom(context, document.documentElement)
+        }
+
+        fun fromFile(context: Context, file: File) {
+            file.inputStream().buffered().use {
+                fromStream(context, it)
+            }
+        }
+
+        fun check() {
+            require(name != null) { "Element name must not be null" }
+        }
     }
 
     fun create(element: XmlElement.() -> Unit): XmlResourceParser {
