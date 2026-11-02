@@ -10,7 +10,11 @@ android {
     defaultConfig {
         externalNativeBuild {
             cmake {
-                cppFlags("")
+                cppFlags(
+                    "-Wno-unused-value",
+                    "-Wno-unused-variable",
+                    "-Wno-unused-command-line-argument"
+                )
             }
         }
     }
@@ -19,6 +23,16 @@ android {
         release {
             externalNativeBuild {
                 cmake {
+                    cppFlags(
+                        "-fvisibility=hidden",
+                        "-fvisibility-inlines-hidden",
+                        "-ffunction-sections",
+                        "-fdata-sections",
+                        "-Wl,--gc-sections",
+                        "-Wl,--exclude-libs,ALL",
+                        "-Wl,--strip-all",
+                        "-flto"
+                    )
                     arguments(
                         "-DCMAKE_BUILD_TYPE=Release",
                         "-DCMAKE_C_FLAGS_RELEASE=-Os",
