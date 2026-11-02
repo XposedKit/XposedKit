@@ -19,6 +19,7 @@ import cc.meteormc.xposedkit.reflect
 import org.w3c.dom.Document
 import org.w3c.dom.Node
 import java.io.ByteArrayOutputStream
+import java.io.OutputStream
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import kotlin.math.abs
@@ -470,25 +471,23 @@ object RuntimeXmlResource {
 
     private val EMPTY_REF = ResStringPool.Ref(0xFFFFFFFFu)
 
-    private interface Serializer {
-        val bodySize: Int
-
+    private interface XmlComponent {
         fun serialize(out: ByteArrayOutputStream)
 
         fun ByteArrayOutputStream.align4() {
             while (size() % 4 != 0) { write(0) }
         }
 
-        fun ByteArrayOutputStream.writeUByte(value: UByte) {
+        fun OutputStream.writeUByte(value: UByte) {
             write(value.toInt())
         }
 
-        fun ByteArrayOutputStream.writeUShort(value: UShort) {
+        fun OutputStream.writeUShort(value: UShort) {
             write(value.toInt() and 0xFF)
             write(value.toInt() shr 8 and 0xFF)
         }
 
-        fun ByteArrayOutputStream.writeUInt(value: UInt) {
+        fun OutputStream.writeUInt(value: UInt) {
             write(value.toInt() and 0xFF)
             write(value.toInt() shr 8 and 0xFF)
             write(value.toInt() shr 16 and 0xFF)
@@ -499,10 +498,7 @@ object RuntimeXmlResource {
     private class ResValue(
         val dataType: UByte, // uint8_t
         val data: UInt // uint32_t
-    ) : Serializer {
-        override val bodySize: Int
-            get() = UShort.SIZE_BYTES + UInt.SIZE_BYTES
-
+    ) : XmlComponent {
         override fun serialize(out: ByteArrayOutputStream) {
             out.writeUShort(8u) // size=2+1+1+4
             out.writeUByte(0u) // Always set to 0
@@ -515,10 +511,7 @@ object RuntimeXmlResource {
         val type: UShort, // uint16_t
         val headerSize: UShort, // uint16_t
         var size: UInt = 0u // uint32_t
-    ) : Serializer {
-        override val bodySize: Int
-            get() = throw UnsupportedOperationException("ResChunkHeader does not have a body size")
-
+    ) : XmlComponent {
         companion object {
             const val BASE_HEADER_SIZE = 2 + 2 + 4
 
@@ -562,51 +555,42 @@ object RuntimeXmlResource {
         val strings: ResStringPool,
         val ids: ResIdPool,
         val nodes: Array<ResXMLTree.Node>
-    ) : Serializer {
-        override val bodySize: Int
-            get() {
-                var result = 0
-                result += strings.bodySize
-                result += ids.bodySize
-                result += nodes.sumOf {
-                    result = (result + 3) and -4
-                    it.bodySize
-                }
-                return result
+    ) : XmlComponent {
+        override fun serialize(out: ByteArrayOutputStream) {
+            val body = ByteArrayOutputStream()
+            strings.serialize(body)
+            ids.serialize(body)
+            nodes.forEach { node ->
+                body.align4()
+                node.serialize(body)
             }
 
-        override fun serialize(out: ByteArrayOutputStream) {
-            header.resize(bodySize)
+            header.resize(body.size())
             header.serialize(out)
-            strings.serialize(out)
-            ids.serialize(out)
-            nodes.forEach {
-                out.align4()
-                it.serialize(out)
-            }
+            body.writeTo(out)
         }
 
         class Header : ResChunkHeader(RES_XML_TYPE, BASE_HEADER_SIZE.toUShort())
 
-        interface Ext : Serializer
+        interface Ext : XmlComponent
 
         class Node(
             type: UShort,
             val comment: ResStringPool.Ref,
             val ext: Ext
-        ) : Serializer {
+        ) : XmlComponent {
             // 这里的headerSize包含Node中除Ext以外的所有数据的大小
             private val header = ResChunkHeader(type, (ResChunkHeader.BASE_HEADER_SIZE + 4 + 4).toUShort())
 
-            override val bodySize: Int
-                get() = comment.bodySize + ext.bodySize
-
             override fun serialize(out: ByteArrayOutputStream) {
-                header.resize(bodySize)
+                val body = ByteArrayOutputStream()
+                ext.serialize(body)
+
+                header.resize(body.size())
                 header.serialize(out)
                 out.writeUInt(0u) // lineNumber=0
                 comment.serialize(out)
-                ext.serialize(out)
+                body.writeTo(out)
             }
         }
 
@@ -614,9 +598,6 @@ object RuntimeXmlResource {
             val prefix: ResStringPool.Ref,
             val uri: ResStringPool.Ref
         ) : Ext {
-            override val bodySize: Int
-                get() = prefix.bodySize + uri.bodySize
-
             override fun serialize(out: ByteArrayOutputStream) {
                 prefix.serialize(out)
                 uri.serialize(out)
@@ -632,9 +613,6 @@ object RuntimeXmlResource {
             val styleIndex: UShort, // uint16_t
             val attributes: Array<Attribute>
         ) : Ext {
-            override val bodySize: Int
-                get() = namespace.bodySize + name.bodySize + UShort.SIZE_BYTES * 4 + attributes.sumOf { it.bodySize }
-
             override fun serialize(out: ByteArrayOutputStream) {
                 namespace.serialize(out)
                 name.serialize(out)
@@ -652,9 +630,6 @@ object RuntimeXmlResource {
             val namespace: ResStringPool.Ref,
             val name: ResStringPool.Ref
         ) : Ext {
-            override val bodySize: Int
-                get() = namespace.bodySize + name.bodySize
-
             override fun serialize(out: ByteArrayOutputStream) {
                 namespace.serialize(out)
                 name.serialize(out)
@@ -665,9 +640,6 @@ object RuntimeXmlResource {
             val data: ResStringPool.Ref,
             val typedData: ResValue
         ) : Ext {
-            override val bodySize: Int
-                get() = data.bodySize + typedData.bodySize
-
             override fun serialize(out: ByteArrayOutputStream) {
                 data.serialize(out)
                 typedData.serialize(out)
@@ -679,17 +651,7 @@ object RuntimeXmlResource {
             val name: ResStringPool.Ref,
             val rawValue: ResStringPool.Ref,
             val typedValue: ResValue
-        ) : Serializer {
-            override val bodySize: Int
-                get() {
-                    var result = 0
-                    result += namespace.bodySize
-                    result += name.bodySize
-                    result += rawValue.bodySize
-                    result += typedValue.bodySize
-                    return result
-                }
-
+        ) : XmlComponent {
             override fun serialize(out: ByteArrayOutputStream) {
                 namespace.serialize(out)
                 name.serialize(out)
@@ -705,39 +667,22 @@ object RuntimeXmlResource {
         val styleOffsets: UIntArray, // uint32_t
         val strings: Array<StringData>,
         val styles: Array<StyleData>
-    ) : Serializer {
-        private var cachedSize = 0
-        override val bodySize: Int
-            get() = cachedSize.takeIf { it > 0 } ?: calculateLayout()
-
+    ) : XmlComponent {
         override fun serialize(out: ByteArrayOutputStream) {
-            header.resize(bodySize)
-            header.serialize(out)
-            stringOffsets.forEach { out.writeUInt(it) }
-            styleOffsets.forEach { out.writeUInt(it) }
-            strings.forEach { it.serialize(out) }
-            out.align4()
-            styles.forEach { it.serialize(out) }
-            out.align4()
-        }
-
-        private fun calculateLayout(): Int {
-            var size = 0
             val headerSize = header.headerSize
-            fun align() {
-                size = (size + 3) and -4
-            }
+            val body = ByteArrayOutputStream()
+            stringOffsets.forEach { body.writeUInt(it) }
+            styleOffsets.forEach { body.writeUInt(it) }
+            header.stringsStart = headerSize + body.size().toUInt()
+            strings.forEach { it.serialize(body) }
+            body.align4()
+            header.stylesStart = headerSize + body.size().toUInt()
+            styles.forEach { it.serialize(body) }
+            body.align4()
 
-            size += stringOffsets.size * UInt.SIZE_BYTES
-            size += styleOffsets.size * UInt.SIZE_BYTES
-            header.stringsStart = headerSize + size.toUInt()
-            size += strings.sumOf { it.bodySize }
-            align()
-            header.stylesStart = headerSize + size.toUInt()
-            size += styles.sumOf { it.bodySize }
-            align()
-            cachedSize = size
-            return size
+            header.resize(body.size())
+            header.serialize(out)
+            body.writeTo(out)
         }
 
         class Header(
@@ -764,19 +709,15 @@ object RuntimeXmlResource {
 
         class Ref(
             val index: UInt // uint32_t
-        ) : Serializer {
-            override val bodySize: Int
-                get() = UInt.SIZE_BYTES
-
+        ) : XmlComponent {
             override fun serialize(out: ByteArrayOutputStream) {
                 out.writeUInt(index)
             }
         }
 
-        class StringData(value: String) : Serializer {
+        class StringData(value: String) : XmlComponent {
             private val data: ByteArray
-
-            override val bodySize: Int
+            val size: Int
                 get() = data.size
 
             init {
@@ -814,10 +755,7 @@ object RuntimeXmlResource {
             }
         }
 
-        class StyleData : Serializer {
-            override val bodySize: Int
-                get() = 0
-
+        class StyleData : XmlComponent {
             override fun serialize(out: ByteArrayOutputStream) {
 
             }
@@ -827,14 +765,14 @@ object RuntimeXmlResource {
     private class ResIdPool(
         val header: Header,
         val resourceIds: UIntArray // uint32_t
-    ) : Serializer {
-        override val bodySize: Int
-            get() = resourceIds.size * UInt.SIZE_BYTES
-
+    ) : XmlComponent {
         override fun serialize(out: ByteArrayOutputStream) {
-            header.resize(bodySize)
+            val body = ByteArrayOutputStream()
+            resourceIds.forEach { body.writeUInt(it) }
+
+            header.resize(body.size())
             header.serialize(out)
-            resourceIds.forEach { out.writeUInt(it) }
+            body.writeTo(out)
         }
 
         class Header : ResChunkHeader(RES_XML_RESOURCE_MAP_TYPE, BASE_HEADER_SIZE.toUShort())
@@ -922,7 +860,7 @@ object RuntimeXmlResource {
                 ),
                 stringOffsets = UIntArray(strings.size) {
                     val off = stringOffset
-                    stringOffset += strings[it].bodySize.toUInt()
+                    stringOffset += strings[it].size.toUInt()
                     off
                 },
                 styleOffsets = uintArrayOf(),
