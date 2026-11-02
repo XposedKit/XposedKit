@@ -312,6 +312,14 @@ object RuntimeXmlResource {
                 throw IllegalArgumentException("Resource creation is not supported at runtime: $value")
             }
 
+            if (value == "@null") {
+                return TypedValue.DATA_NULL_UNDEFINED parseTo TypedValue.TYPE_REFERENCE
+            }
+
+            if (value == "@empty") {
+                return TypedValue.DATA_NULL_EMPTY parseTo TypedValue.TYPE_NULL
+            }
+
             false
         } else if (value.startsWith("?")) {
             true
@@ -320,8 +328,6 @@ object RuntimeXmlResource {
         }
 
         val token = value.substring(1)
-        if (token == "null") return 0 parseTo TypedValue.TYPE_NULL
-
         val colon = token.indexOf(':')
         var resource = token
         var packageName: String? = null
@@ -374,8 +380,7 @@ object RuntimeXmlResource {
         }
 
         val data = value.split('|').fold(0) { acc, part ->
-            val enumValue = attrs[part.trim()]
-                ?: throw IllegalArgumentException("Unknown enum value '$part' for attribute ID $attributeId")
+            val enumValue = attrs[part.trim()] ?: return null
             acc or enumValue
         }
         return data parseTo TypedValue.TYPE_INT_DEC
@@ -812,31 +817,27 @@ object RuntimeXmlResource {
             return ref
         }
 
-        val namespaces = arrayListOf<ResXMLTree.NamespaceExt>()
-        val namespaceIndex = HashMap<String, ResStringPool.Ref>()
-        fun compileNamespace(ns: String): ResStringPool.Ref {
-            return namespaceIndex.getOrPut(ns) {
-                val prefix = "ns${namespaces.size}"
-                val ref = compileString(prefix)
-                namespaces.add(ResXMLTree.NamespaceExt(ref, compileString(ns)))
-                ref
-            }
-        }
-
         val nodes = arrayListOf<ResXMLTree.Node>()
         fun handleElement(element: XmlElement) {
             val name = compileString(element.name!!)
-            val attributes = element.attributes.map {
-                val namespace = it.namespace?.let { ns -> compileNamespace(ns) }
-                val dataType = it.valueType!!
-                val data = it.valueData!!
-                ResXMLTree.Attribute(
-                    namespace = namespace ?: EMPTY_REF,
-                    name = compileResource(it.name!!, it.attributeId.toUInt()),
-                    rawValue = compileString(it.value!!),
-                    typedValue = ResValue(dataType.toUByte(), data.toUInt())
-                )
-            }.toTypedArray()
+            val attributes = element.attributes
+                .sortedBy { it.attributeId }
+                .map {
+                    val namespace = it.namespace?.let { ns -> compileString(ns) }
+                    val rawValue = compileString(it.value!!)
+                    val dataType = it.valueType!!
+                    var data = it.valueData!!.toUInt()
+                    if (dataType == TypedValue.TYPE_STRING) {
+                        data = rawValue.index
+                    }
+
+                    ResXMLTree.Attribute(
+                        namespace = namespace ?: EMPTY_REF,
+                        name = compileResource(it.name!!, it.attributeId.toUInt()),
+                        rawValue = rawValue,
+                        typedValue = ResValue(dataType.toUByte(), data)
+                    )
+                }.toTypedArray()
             nodes += ResXMLTree.Node(
                 type = ResChunkHeader.RES_XML_START_ELEMENT_TYPE,
                 comment = EMPTY_REF,
@@ -885,23 +886,7 @@ object RuntimeXmlResource {
                 header = ResIdPool.Header(),
                 resourceIds = resources.toUIntArray()
             ),
-            nodes = buildList {
-                namespaces.forEach {
-                    this += ResXMLTree.Node(
-                        type = ResChunkHeader.RES_XML_START_NAMESPACE_TYPE,
-                        comment = EMPTY_REF,
-                        ext = it
-                    )
-                }
-                addAll(nodes)
-                namespaces.asReversed().forEach {
-                    this += ResXMLTree.Node(
-                        type = ResChunkHeader.RES_XML_END_NAMESPACE_TYPE,
-                        comment = EMPTY_REF,
-                        ext = it
-                    )
-                }
-            }.toTypedArray()
+            nodes = nodes.toTypedArray()
         )
         return ByteArrayOutputStream().use {
             tree.serialize(it)
