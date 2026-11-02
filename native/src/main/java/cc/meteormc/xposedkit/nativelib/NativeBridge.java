@@ -29,6 +29,8 @@ public class NativeBridge {
     @Nullable
     public static native Object CallNonvirtualMethod(@NonNull Executable method, @NonNull Object instance, @NonNull Object... args);
 
+    public static native long CreateXmlParseState(@NonNull byte[] axml);
+
     @Nullable
     public static native Member FindClassInitializer(@NonNull Class<?> clazz) throws IllegalStateException;
 
