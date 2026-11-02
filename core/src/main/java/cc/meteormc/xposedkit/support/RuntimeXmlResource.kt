@@ -10,7 +10,6 @@ import android.os.Build
 import android.util.AttributeSet
 import android.util.TypedValue
 import androidx.annotation.CallSuper
-import cc.meteormc.xposedkit.XLog
 import cc.meteormc.xposedkit.allocate
 import cc.meteormc.xposedkit.call
 import cc.meteormc.xposedkit.nativelib.NativeBridge
@@ -170,7 +169,6 @@ object RuntimeXmlResource {
         xml.check()
 
         val axml = compileAXML(xml)
-        XLog.d("RuntimeXmlResource", axml.joinToString(" ") { "%02X".format(it.toInt() and 0xFF) })
         val parseState = NativeBridge.CreateXmlParseState(axml)
         val xmlBlock = xmlBlockClass.allocate().apply {
             val stringBlock = StringBlock(stringBlockMethod.call(null, parseState), false)
@@ -937,7 +935,7 @@ object RuntimeXmlResource {
             ),
             nodes = buildList {
                 namespaces.forEach {
-                    ResXMLTree.Node(
+                    this += ResXMLTree.Node(
                         type = ResChunkHeader.RES_XML_START_NAMESPACE_TYPE,
                         comment = EMPTY_REF,
                         ext = it
@@ -945,7 +943,7 @@ object RuntimeXmlResource {
                 }
                 addAll(nodes)
                 namespaces.asReversed().forEach {
-                    ResXMLTree.Node(
+                    this += ResXMLTree.Node(
                         type = ResChunkHeader.RES_XML_END_NAMESPACE_TYPE,
                         comment = EMPTY_REF,
                         ext = it
