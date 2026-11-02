@@ -1,7 +1,8 @@
 module;
 
 #include <jni.h>
-#include <string>
+#include <concepts>
+#include <utility>
 
 export module xposedkit:jni_helper;
 

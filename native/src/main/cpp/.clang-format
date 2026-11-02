@@ -11,3 +11,4 @@ IncludeCategories:
 AccessModifierOffset: -4
 IndentRequiresClause: false
 AllowShortFunctionsOnASingleLine: None
+FixNamespaceComments: true

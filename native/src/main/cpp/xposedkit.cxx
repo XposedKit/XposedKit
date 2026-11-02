@@ -1,7 +1,6 @@
 module;
 
 #include <jni.h>
-#include <xdl.h>
 #include <vector>
 
 export module xposedkit;
