@@ -23,6 +23,11 @@ class InvokeInfo(
             field = value
         }
 
+    val constructor
+        get() = member as Constructor<*>
+    val method
+        get() = member as Method
+
     fun <T> instance() = this.instance as T
 
     fun <T> argumentAt(index: Int) = this.args[index] as T
@@ -104,7 +109,7 @@ class InvokeInfo(
     fun <T> callOriginal(vararg args: Any?): T {
         return when (member) {
             is Constructor<*> -> {
-                member.callOriginal(instance, *args) as T
+                member.callOriginal(instance, *args)
             }
             is Method -> {
                 member.callOriginal(instance, *args)
