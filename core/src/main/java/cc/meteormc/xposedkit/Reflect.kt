@@ -307,7 +307,7 @@ sealed class MemberMatcher {
 
     var modifiers: Int? = null
 
-    var annotations: Array<out Annotation>? = null
+    var annotations: Array<out Class<*>>? = null
 
     var isSynthetic: Boolean? = null
 
@@ -336,6 +336,11 @@ sealed class MemberMatcher {
 
     protected infix fun Int.matchesModifiers(modifiers: Int): Boolean {
         return (modifiers and this) == this
+    }
+
+    protected infix fun Array<out Class<*>>.containsAllAnnotations(annotations: Array<Annotation>): Boolean {
+        val list = this.toList()
+        return annotations.map { it.javaClass }.containsAll(list)
     }
 
     protected infix fun <T> Array<out T>?.contentEqualsWithoutNull(other: Array<out T>?): Boolean {
@@ -384,7 +389,7 @@ class ConstructorMatcher : ExecutableMatcher() {
     fun matches(constructor: Constructor<*>): Boolean {
         if (name != null && name != constructor.name) return false
         if (modifiers != null && modifiers!!.matchesModifiers(constructor.modifiers)) return false
-        if (annotations != null && !annotations!!.any { it in constructor.annotations }) return false
+        if (annotations != null && !annotations!!.containsAllAnnotations(constructor.annotations)) return false
         if (paramTypes != null && !paramTypes.contentEqualsWithoutNull(constructor.parameterTypes)) return false
         if (paramCount != null && paramCount != constructor.parameterTypes.size) return false
         if (exceptionTypes != null && !exceptionTypes!!.any { it in constructor.exceptionTypes }) return false
@@ -415,7 +420,7 @@ class MethodMatcher : ExecutableMatcher() {
     fun matches(method: Method): Boolean {
         if (name != null && name != method.name) return false
         if (modifiers != null && modifiers!!.matchesModifiers(method.modifiers)) return false
-        if (annotations != null && !annotations!!.any { it in method.annotations }) return false
+        if (annotations != null && !annotations!!.containsAllAnnotations(method.annotations)) return false
         if (paramTypes != null && !paramTypes.contentEqualsWithoutNull(method.parameterTypes)) return false
         if (paramCount != null && paramCount != method.parameterTypes.size) return false
         if (exceptionTypes != null && !exceptionTypes!!.any { it in method.exceptionTypes }) return false
@@ -456,7 +461,7 @@ class FieldMatcher : MemberMatcher() {
     fun matches(field: Field): Boolean {
         if (name != null && name != field.name) return false
         if (modifiers != null && modifiers!!.matchesModifiers(field.modifiers)) return false
-        if (annotations != null && !annotations!!.any { it in field.annotations }) return false
+        if (annotations != null && !annotations!!.containsAllAnnotations(field.annotations)) return false
         if (type != null && type != field.type) return false
         if (isSynthetic != null && isSynthetic != field.isSynthetic) return false
         if (isEnumConstant != null && isEnumConstant != field.isEnumConstant) return false
