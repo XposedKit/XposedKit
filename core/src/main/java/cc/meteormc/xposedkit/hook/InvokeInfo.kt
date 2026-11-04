@@ -109,7 +109,7 @@ class InvokeInfo(
     fun <T> callOriginal(vararg args: Any?): T {
         return when (member) {
             is Constructor<*> -> {
-                member.callOriginal(instance, *args)
+                member.callOriginal(instance!!, *args) as T
             }
             is Method -> {
                 member.callOriginal(instance, *args)
