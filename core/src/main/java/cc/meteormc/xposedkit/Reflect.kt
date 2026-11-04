@@ -558,9 +558,10 @@ fun <T : Any> Constructor<*>.call(obj: T, vararg args: Any?): T {
     return obj
 }
 
-fun <T : Any> Constructor<*>.callOriginal(obj: Any?, vararg args: Any?): T {
+fun <T : Any> Constructor<*>.callOriginal(obj: T, vararg args: Any?): T {
     setAccessible()
-    return XposedKit.engine.invokeOriginal(this, obj, *args) as T
+    XposedKit.engine.invokeOriginal(this, obj, *args)
+    return obj
 }
 
 fun Method.deoptimize(): Boolean {
