@@ -25,7 +25,6 @@ import cc.meteormc.xposedkit.get
 import cc.meteormc.xposedkit.put
 import cc.meteormc.xposedkit.reflect
 
-@ExperimentalStdlibApi
 open class ModuleContextWrapper(
     base: Context,
     val mResources: Resources = XposedKit.createModuleResources(
