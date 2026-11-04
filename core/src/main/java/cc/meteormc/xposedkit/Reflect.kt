@@ -333,6 +333,19 @@ sealed class MemberMatcher {
         result = 31 * result + isSynthetic.hashCode()
         return result
     }
+
+    protected infix fun Int.matchesModifiers(modifiers: Int): Boolean {
+        return (modifiers and this) == this
+    }
+
+    protected infix fun <T> Array<out T>?.contentEqualsWithoutNull(other: Array<out T>?): Boolean {
+        if (this === other) return true
+        if (this == null || other == null) return false
+        if (size != other.size) return false
+        return indices.all { i ->
+            this[i] == null || this[i] == other[i]
+        }
+    }
 }
 
 sealed class ExecutableMatcher : MemberMatcher() {
@@ -370,7 +383,7 @@ sealed class ExecutableMatcher : MemberMatcher() {
 class ConstructorMatcher : ExecutableMatcher() {
     fun matches(constructor: Constructor<*>): Boolean {
         if (name != null && name != constructor.name) return false
-        if (modifiers != null && modifiers != constructor.modifiers) return false
+        if (modifiers != null && modifiers!!.matchesModifiers(constructor.modifiers)) return false
         if (annotations != null && !annotations!!.any { it in constructor.annotations }) return false
         if (paramTypes != null && !paramTypes.contentEqualsWithoutNull(constructor.parameterTypes)) return false
         if (paramCount != null && paramCount != constructor.parameterTypes.size) return false
@@ -401,7 +414,7 @@ class MethodMatcher : ExecutableMatcher() {
 
     fun matches(method: Method): Boolean {
         if (name != null && name != method.name) return false
-        if (modifiers != null && modifiers != method.modifiers) return false
+        if (modifiers != null && modifiers!!.matchesModifiers(method.modifiers)) return false
         if (annotations != null && !annotations!!.any { it in method.annotations }) return false
         if (paramTypes != null && !paramTypes.contentEqualsWithoutNull(method.parameterTypes)) return false
         if (paramCount != null && paramCount != method.parameterTypes.size) return false
@@ -442,7 +455,7 @@ class FieldMatcher : MemberMatcher() {
 
     fun matches(field: Field): Boolean {
         if (name != null && name != field.name) return false
-        if (modifiers != null && modifiers != field.modifiers) return false
+        if (modifiers != null && modifiers!!.matchesModifiers(field.modifiers)) return false
         if (annotations != null && !annotations!!.any { it in field.annotations }) return false
         if (type != null && type != field.type) return false
         if (isSynthetic != null && isSynthetic != field.isSynthetic) return false
@@ -679,13 +692,4 @@ internal fun <T : AccessibleObject> T.setAccessible(): T {
 @PublishedApi
 internal fun <T : AccessibleObject> Array<T>.setAccessible(): List<T> {
     return this.map { it.setAccessible() }
-}
-
-private infix fun <T> Array<out T>?.contentEqualsWithoutNull(other: Array<out T>?): Boolean {
-    if (this === other) return true
-    if (this == null || other == null) return false
-    if (size != other.size) return false
-    return indices.all { i ->
-        this[i] == null || this[i] == other[i]
-    }
 }
