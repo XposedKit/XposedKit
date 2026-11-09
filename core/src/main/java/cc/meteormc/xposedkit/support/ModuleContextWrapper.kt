@@ -214,167 +214,8 @@ open class ModuleContextWrapper(
 
         val activityThread = mThread!!
         var instrumentation = activityThread.instrumentation
-        if (instrumentation !is InstrumentationWrapper) {
-            @Suppress("DEPRECATION")
-            instrumentation = object : InstrumentationWrapper(instrumentation) {
-                override fun callActivityOnCreate(activity: Activity?, icicle: Bundle?) {
-                    prepareActivity(activity, icicle)
-                    super.callActivityOnCreate(activity, icicle)
-                }
-
-                override fun callActivityOnCreate(activity: Activity?, icicle: Bundle?, persistentState: PersistableBundle?) {
-                    prepareActivity(activity, icicle)
-                    super.callActivityOnCreate(activity, icicle, persistentState)
-                }
-
-                override fun newActivity(
-                    cl: ClassLoader?,
-                    className: String?,
-                    intent: Intent?
-                ): Activity? {
-                    return tryNewModuleActivity(intent) ?: super.newActivity(cl, className, intent)
-                }
-
-                override fun newActivity(
-                    clazz: Class<*>?,
-                    context: Context?,
-                    token: IBinder?,
-                    application: Application?,
-                    intent: Intent?,
-                    info: ActivityInfo?,
-                    title: CharSequence?,
-                    parent: Activity?,
-                    id: String?,
-                    lastNonConfigurationInstance: Any?
-                ): Activity? {
-                    return tryNewModuleActivity(intent) ?: super.newActivity(
-                        clazz,
-                        context,
-                        token,
-                        application,
-                        intent,
-                        info,
-                        title,
-                        parent,
-                        id,
-                        lastNonConfigurationInstance
-                    )
-                }
-
-                override fun onException(obj: Any?, e: Throwable?): Boolean {
-                    if (obj !is Activity) return super.onException(obj, e)
-
-                    val intent = obj.intent.copy()
-                    val component = intent.component ?: return false
-                    if (!this.isProxyActivity(intent) && component.packageName != this@ModuleContextWrapper.packageName) {
-                        return super.onException(obj, e)
-                    }
-
-                    XLog.e(
-                        TAG,
-                        "Unable to start activity '${this.getRealIntent(intent)?.component ?: component}'" +
-                                " from module '${this@ModuleContextWrapper.packageName}'" +
-                                " in package '${baseContext.packageName}'",
-                        e
-                    )
-                    return true
-                }
-
-                private fun prepareActivity(activity: Activity?, icicle: Bundle?) {
-                    if (activity == null) return
-
-                    val intent = activity.intent.copy()
-                    if (!this.isProxyActivity(intent)) return
-                    XLog.d(TAG, "prepareActivity: preparing activity ${activity.javaClass.name} for module context")
-
-                    val moduleContext = this@ModuleContextWrapper
-                    icicle?.classLoader = moduleContext.classLoader
-
-                    activity.intent = this.getRealIntent(intent)?.apply {
-                        setExtrasClassLoader(moduleContext.classLoader)
-                    } ?: intent
-                    ContextThemeWrapper::class.reflect {
-                        field("mBase")?.put(activity, moduleContext)
-                        field("mResources")?.put(activity, mResources)
-                    }
-
-                    // 配置Activity的主题 如果没有可用主题则使用默认主题 (一般取决于宿主)
-                    val targetActivityInfo = this.getTargetActivityInfo(intent)
-                    val themeId = targetActivityInfo?.theme ?: 0
-                    // 优先使用模块自定义的主题
-                    if (themeId != 0) {
-                        activity.setTheme(themeId)
-                    } else if (moduleContext.mThemeId > 0) {
-                        // 其次跟随ModuleContextWrapper设置的主题
-                        val themeId = moduleContext.mThemeId
-                        activity.setTheme(themeId)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            activity.theme = moduleContext.theme
-                        } else {
-                            ContextThemeWrapper::class.reflect {
-                                field("mTheme")?.put(activity, moduleContext.theme)
-                            }
-                        }
-                    }
-                }
-
-                private fun tryNewModuleActivity(intent: Intent?): Activity? {
-                    if (intent == null) return null
-
-                    val intent = intent.copy()
-                    if (!this.isProxyActivity(intent)) return null
-                    XLog.d(TAG, "tryNewModuleActivity: current component is ${intent.component}")
-
-                    val realContext = this@ModuleContextWrapper
-                    val realClassLoader = realContext.classLoader
-                    val realIntent = this.getRealIntent(intent) ?: return null
-                    val realComponent = realIntent.component ?: return null
-                    XLog.d(TAG, "tryNewModuleActivity: real component is $realComponent")
-
-                    val activityInfo = this.getTargetActivityInfo(intent)
-                    val className = activityInfo?.targetActivity ?: activityInfo?.name ?: realComponent.className
-                    return try {
-                        var loaderName = realClassLoader.toString()
-                        if (loaderName.length > MAX_LOADER_NAME) {
-                            loaderName = loaderName.take(MAX_LOADER_NAME) + "..."
-                        }
-
-                        XLog.d(TAG, "tryNewModuleActivity: trying use classloader '$loaderName' to load activity '$className'")
-                        super.newActivity(
-                            realClassLoader,
-                            className,
-                            realIntent
-                        )
-                    } catch (e: ClassNotFoundException) {
-                        XLog.e(
-                            TAG,
-                            "Failed to find Activity '$className'" +
-                                    " from module '${realContext.packageName}'" +
-                                    " in package '${baseContext.packageName}'",
-                            e
-                        )
-                        null
-                    }
-                }
-
-                // 由于读取操作会导致提前解析
-                // 此处拷贝以避免修改原始Intent
-                // 否则会出现ClassLoader冲突
-                private fun Intent.copy() = Intent(this)
-
-                private fun isProxyActivity(intent: Intent): Boolean {
-                    return intent.getBooleanExtra("is_proxy_activity", false)
-                }
-
-                private fun getRealIntent(intent: Intent): Intent? {
-                    return intent.getParcelableExtra("intent_wrapper")
-                }
-
-                private fun getTargetActivityInfo(intent: Intent): ActivityInfo? {
-                    return intent.getParcelableExtra("target_activity_info")
-                }
-            }
-
+        if (instrumentation !is ProxyInstrumentation) {
+            instrumentation = ProxyInstrumentation(instrumentation)
             ActivityThread::class.reflect {
                 field("mInstrumentation")?.apply {
                     put(activityThread, instrumentation)
@@ -418,5 +259,161 @@ open class ModuleContextWrapper(
 
     fun setProxyActivity(component: ComponentName) {
         mProxyActivity = component
+    }
+
+    @Suppress("DEPRECATION")
+    private inner class ProxyInstrumentation(base: Instrumentation) : InstrumentationWrapper(base) {
+        override fun callActivityOnCreate(activity: Activity?, icicle: Bundle?) {
+            prepareActivity(activity, icicle)
+            super.callActivityOnCreate(activity, icicle)
+        }
+
+        override fun callActivityOnCreate(activity: Activity?, icicle: Bundle?, persistentState: PersistableBundle?) {
+            prepareActivity(activity, icicle)
+            super.callActivityOnCreate(activity, icicle, persistentState)
+        }
+
+        override fun newActivity(
+            cl: ClassLoader?,
+            className: String?,
+            intent: Intent?
+        ): Activity? {
+            return tryNewModuleActivity(intent) ?: super.newActivity(cl, className, intent)
+        }
+
+        override fun newActivity(
+            clazz: Class<*>?,
+            context: Context?,
+            token: IBinder?,
+            application: Application?,
+            intent: Intent?,
+            info: ActivityInfo?,
+            title: CharSequence?,
+            parent: Activity?,
+            id: String?,
+            lastNonConfigurationInstance: Any?
+        ): Activity? {
+            return tryNewModuleActivity(intent) ?: super.newActivity(
+                clazz,
+                context,
+                token,
+                application,
+                intent,
+                info,
+                title,
+                parent,
+                id,
+                lastNonConfigurationInstance
+            )
+        }
+
+        override fun onException(obj: Any?, e: Throwable?): Boolean {
+            if (obj !is Activity) return super.onException(obj, e)
+
+            val intent = obj.intent.copy()
+            val component = intent.component ?: return false
+            if (!this.isProxyActivity(intent) && packageName != component.packageName) {
+                return super.onException(obj, e)
+            }
+
+            XLog.e(
+                TAG,
+                "Unable to start activity '${this.getRealIntent(intent)?.component ?: component}'" +
+                        " from module '${packageName}'" +
+                        " in package '${baseContext.packageName}'",
+                e
+            )
+            return true
+        }
+
+        private fun prepareActivity(activity: Activity?, icicle: Bundle?) {
+            if (activity == null) return
+
+            val intent = activity.intent.copy()
+            if (!this.isProxyActivity(intent)) return
+            XLog.d(TAG, "prepareActivity: preparing activity ${activity.javaClass.name} for module context")
+
+            icicle?.classLoader = classLoader
+
+            activity.intent = this.getRealIntent(intent)?.apply {
+                setExtrasClassLoader(classLoader)
+            } ?: intent
+            ContextThemeWrapper::class.reflect {
+                field("mBase")?.put(activity, this@ModuleContextWrapper)
+                field("mResources")?.put(activity, mResources)
+            }
+
+            // 配置Activity的主题 如果没有可用主题则使用默认主题 (一般取决于宿主)
+            val targetActivityInfo = this.getTargetActivityInfo(intent)
+            val themeId = targetActivityInfo?.theme ?: 0
+            // 优先使用模块自定义的主题
+            if (themeId != 0) {
+                activity.setTheme(themeId)
+            } else if (mThemeId > 0) {
+                // 其次跟随ModuleContextWrapper设置的主题
+                activity.setTheme(mThemeId)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    activity.theme = theme
+                } else {
+                    ContextThemeWrapper::class.reflect {
+                        field("mTheme")?.put(activity, theme)
+                    }
+                }
+            }
+        }
+
+        private fun tryNewModuleActivity(intent: Intent?): Activity? {
+            if (intent == null) return null
+
+            val intent = intent.copy()
+            if (!this.isProxyActivity(intent)) return null
+            XLog.d(TAG, "tryNewModuleActivity: current component is ${intent.component}")
+
+            val realIntent = this.getRealIntent(intent) ?: return null
+            val realComponent = realIntent.component ?: return null
+            XLog.d(TAG, "tryNewModuleActivity: real component is $realComponent")
+
+            val activityInfo = this.getTargetActivityInfo(intent)
+            val className = activityInfo?.targetActivity ?: activityInfo?.name ?: realComponent.className
+            return try {
+                var loaderName = classLoader.toString()
+                if (loaderName.length > MAX_LOADER_NAME) {
+                    loaderName = loaderName.take(MAX_LOADER_NAME) + "..."
+                }
+
+                XLog.d(TAG, "tryNewModuleActivity: trying use classloader '$loaderName' to load activity '$className'")
+                super.newActivity(
+                    classLoader,
+                    className,
+                    realIntent
+                )
+            } catch (e: ClassNotFoundException) {
+                XLog.e(
+                    TAG,
+                    "Failed to find Activity '$className'" +
+                            " from module '${packageName}'" +
+                            " in package '${baseContext.packageName}'",
+                    e
+                )
+                null
+            }
+        }
+
+        // 由于读取操作会导致提前解析
+        // 此处拷贝以避免修改原始Intent
+        // 否则会出现ClassLoader冲突
+        private fun Intent.copy() = Intent(this)
+
+        private fun isProxyActivity(intent: Intent): Boolean {
+            return intent.getBooleanExtra("is_proxy_activity", false)
+        }
+
+        private fun getRealIntent(intent: Intent): Intent? {
+            return intent.getParcelableExtra("intent_wrapper")
+        }
+
+        private fun getTargetActivityInfo(intent: Intent): ActivityInfo? {
+            return intent.getParcelableExtra("target_activity_info")
+        }
     }
 }
