@@ -388,7 +388,7 @@ sealed class ExecutableMatcher : MemberMatcher() {
 class ConstructorMatcher : ExecutableMatcher() {
     fun matches(constructor: Constructor<*>): Boolean {
         if (name != null && name != constructor.name) return false
-        if (modifiers != null && modifiers!!.matchesModifiers(constructor.modifiers)) return false
+        if (modifiers != null && !modifiers!!.matchesModifiers(constructor.modifiers)) return false
         if (annotations != null && !annotations!!.containsAllAnnotations(constructor.annotations)) return false
         if (paramTypes != null && !paramTypes.contentEqualsWithoutNull(constructor.parameterTypes)) return false
         if (paramCount != null && paramCount != constructor.parameterTypes.size) return false
@@ -419,7 +419,7 @@ class MethodMatcher : ExecutableMatcher() {
 
     fun matches(method: Method): Boolean {
         if (name != null && name != method.name) return false
-        if (modifiers != null && modifiers!!.matchesModifiers(method.modifiers)) return false
+        if (modifiers != null && !modifiers!!.matchesModifiers(method.modifiers)) return false
         if (annotations != null && !annotations!!.containsAllAnnotations(method.annotations)) return false
         if (paramTypes != null && !paramTypes.contentEqualsWithoutNull(method.parameterTypes)) return false
         if (paramCount != null && paramCount != method.parameterTypes.size) return false
@@ -460,7 +460,7 @@ class FieldMatcher : MemberMatcher() {
 
     fun matches(field: Field): Boolean {
         if (name != null && name != field.name) return false
-        if (modifiers != null && modifiers!!.matchesModifiers(field.modifiers)) return false
+        if (modifiers != null && !modifiers!!.matchesModifiers(field.modifiers)) return false
         if (annotations != null && !annotations!!.containsAllAnnotations(field.annotations)) return false
         if (type != null && type != field.type) return false
         if (isSynthetic != null && isSynthetic != field.isSynthetic) return false
