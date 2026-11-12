@@ -19,6 +19,6 @@ interface XposedModule {
     }
 
     fun onHotReloading(param: HotReloadingParam): Boolean {
-        return true
+        return false
     }
 }
