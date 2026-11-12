@@ -50,6 +50,14 @@ open class HookerContext(
         return map { it.hookAfter(callback = callback) }
     }
 
+    fun <T : Member> Array<out T>.hookBefore(callback: InvokeCallback): List<HookHandle> {
+        return map { it.hookBefore(callback = callback) }
+    }
+
+    fun <T : Member> Array<out T>.hookAfter(callback: InvokeCallback): List<HookHandle> {
+        return map { it.hookAfter(callback = callback) }
+    }
+
     fun Class<*>.hookClinitBefore(callback: InvokeCallback): HookHandle {
         return hookClinit(HookType.BEFORE, callback)
     }
