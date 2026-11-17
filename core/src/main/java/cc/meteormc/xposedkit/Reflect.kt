@@ -300,190 +300,190 @@ class Reflect<T : Any>(val type: Class<T>) {
     override fun toString(): String {
         return "Reflect{${type.name}}"
     }
-}
 
-sealed class MemberMatcher {
-    var name: String? = null
+    sealed class MemberMatcher {
+        var name: String? = null
 
-    var modifiers: Int? = null
+        var modifiers: Int? = null
 
-    var annotations: Array<out Class<*>>? = null
+        var annotations: Array<out Class<*>>? = null
 
-    var isSynthetic: Boolean? = null
+        var isSynthetic: Boolean? = null
 
-    var isHidden: Boolean = false
+        var isHidden: Boolean = false
 
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is MemberMatcher) return false
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is MemberMatcher) return false
 
-        if (name != other.name) return false
-        if (modifiers != other.modifiers) return false
-        if (!annotations.contentEquals(other.annotations)) return false
-        if (isSynthetic != other.isSynthetic) return false
-        if (isHidden != other.isHidden) return false
+            if (name != other.name) return false
+            if (modifiers != other.modifiers) return false
+            if (!annotations.contentEquals(other.annotations)) return false
+            if (isSynthetic != other.isSynthetic) return false
+            if (isHidden != other.isHidden) return false
 
-        return true
-    }
+            return true
+        }
 
-    override fun hashCode(): Int {
-        var result = name.hashCode()
-        result = 31 * result + (modifiers ?: 0)
-        result = 31 * result + (annotations?.contentHashCode() ?: 0)
-        result = 31 * result + isSynthetic.hashCode()
-        return result
-    }
+        override fun hashCode(): Int {
+            var result = name.hashCode()
+            result = 31 * result + (modifiers ?: 0)
+            result = 31 * result + (annotations?.contentHashCode() ?: 0)
+            result = 31 * result + isSynthetic.hashCode()
+            return result
+        }
 
-    protected infix fun Int.matchesModifiers(modifiers: Int): Boolean {
-        return (modifiers and this) == this
-    }
+        protected infix fun Int.matchesModifiers(modifiers: Int): Boolean {
+            return (modifiers and this) == this
+        }
 
-    protected infix fun Array<out Class<*>>.containsAllAnnotations(annotations: Array<Annotation>): Boolean {
-        val list = this.toList()
-        return annotations.map { it.javaClass }.containsAll(list)
-    }
+        protected infix fun Array<out Class<*>>.containsAllAnnotations(annotations: Array<Annotation>): Boolean {
+            val list = this.toList()
+            return annotations.map { it.javaClass }.containsAll(list)
+        }
 
-    protected infix fun <T> Array<out T>?.contentEqualsWithoutNull(other: Array<out T>?): Boolean {
-        if (this === other) return true
-        if (this == null || other == null) return false
-        if (size != other.size) return false
-        return indices.all { i ->
-            this[i] == null || this[i] == other[i]
+        protected infix fun <T> Array<out T>?.contentEqualsWithoutNull(other: Array<out T>?): Boolean {
+            if (this === other) return true
+            if (this == null || other == null) return false
+            if (size != other.size) return false
+            return indices.all { i ->
+                this[i] == null || this[i] == other[i]
+            }
         }
     }
-}
 
-sealed class ExecutableMatcher : MemberMatcher() {
-    var paramTypes: Array<out Class<*>?>? = null
+    sealed class ExecutableMatcher : MemberMatcher() {
+        var paramTypes: Array<out Class<*>?>? = null
 
-    var paramCount: Int? = null
+        var paramCount: Int? = null
 
-    var exceptionTypes: Array<out Class<*>>? = null
+        var exceptionTypes: Array<out Class<*>>? = null
 
-    var isVarArgs: Boolean? = null
+        var isVarArgs: Boolean? = null
 
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is ExecutableMatcher) return false
-        if (!super.equals(other)) return false
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is ExecutableMatcher) return false
+            if (!super.equals(other)) return false
 
-        if (!paramTypes.contentEquals(other.paramTypes)) return false
-        if (paramCount != other.paramCount) return false
-        if (!exceptionTypes.contentEquals(other.exceptionTypes)) return false
-        if (isVarArgs != other.isVarArgs) return false
+            if (!paramTypes.contentEquals(other.paramTypes)) return false
+            if (paramCount != other.paramCount) return false
+            if (!exceptionTypes.contentEquals(other.exceptionTypes)) return false
+            if (isVarArgs != other.isVarArgs) return false
 
-        return true
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = super.hashCode()
+            result = 31 * result + (paramTypes?.contentHashCode() ?: 0)
+            result = 31 * result + (paramCount ?: 0)
+            result = 31 * result + (exceptionTypes?.contentHashCode() ?: 0)
+            result = 31 * result + isVarArgs.hashCode()
+            return result
+        }
     }
 
-    override fun hashCode(): Int {
-        var result = super.hashCode()
-        result = 31 * result + (paramTypes?.contentHashCode() ?: 0)
-        result = 31 * result + (paramCount ?: 0)
-        result = 31 * result + (exceptionTypes?.contentHashCode() ?: 0)
-        result = 31 * result + isVarArgs.hashCode()
-        return result
-    }
-}
+    class ConstructorMatcher : ExecutableMatcher() {
+        fun matches(constructor: Constructor<*>): Boolean {
+            if (name != null && name != constructor.name) return false
+            if (modifiers != null && !modifiers!!.matchesModifiers(constructor.modifiers)) return false
+            if (annotations != null && !annotations!!.containsAllAnnotations(constructor.annotations)) return false
+            if (paramTypes != null && !paramTypes.contentEqualsWithoutNull(constructor.parameterTypes)) return false
+            if (paramCount != null && paramCount != constructor.parameterTypes.size) return false
+            if (exceptionTypes != null && !exceptionTypes!!.any { it in constructor.exceptionTypes }) return false
+            if (isSynthetic != null && isSynthetic != constructor.isSynthetic) return false
+            if (isVarArgs != null && isVarArgs != constructor.isVarArgs) return false
+            return true
+        }
 
-class ConstructorMatcher : ExecutableMatcher() {
-    fun matches(constructor: Constructor<*>): Boolean {
-        if (name != null && name != constructor.name) return false
-        if (modifiers != null && !modifiers!!.matchesModifiers(constructor.modifiers)) return false
-        if (annotations != null && !annotations!!.containsAllAnnotations(constructor.annotations)) return false
-        if (paramTypes != null && !paramTypes.contentEqualsWithoutNull(constructor.parameterTypes)) return false
-        if (paramCount != null && paramCount != constructor.parameterTypes.size) return false
-        if (exceptionTypes != null && !exceptionTypes!!.any { it in constructor.exceptionTypes }) return false
-        if (isSynthetic != null && isSynthetic != constructor.isSynthetic) return false
-        if (isVarArgs != null && isVarArgs != constructor.isVarArgs) return false
-        return true
-    }
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is ConstructorMatcher) return false
+            if (!super.equals(other)) return false
+            return true
+        }
 
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is ConstructorMatcher) return false
-        if (!super.equals(other)) return false
-        return true
+        override fun hashCode(): Int {
+            return super.hashCode() * 31
+        }
     }
 
-    override fun hashCode(): Int {
-        return super.hashCode() * 31
-    }
-}
+    class MethodMatcher : ExecutableMatcher() {
+        var returnType: Class<*>? = null
 
-class MethodMatcher : ExecutableMatcher() {
-    var returnType: Class<*>? = null
+        var isBridge: Boolean? = null
 
-    var isBridge: Boolean? = null
+        var isDefault: Boolean? = null
 
-    var isDefault: Boolean? = null
+        fun matches(method: Method): Boolean {
+            if (name != null && name != method.name) return false
+            if (modifiers != null && !modifiers!!.matchesModifiers(method.modifiers)) return false
+            if (annotations != null && !annotations!!.containsAllAnnotations(method.annotations)) return false
+            if (paramTypes != null && !paramTypes.contentEqualsWithoutNull(method.parameterTypes)) return false
+            if (paramCount != null && paramCount != method.parameterTypes.size) return false
+            if (exceptionTypes != null && !exceptionTypes!!.any { it in method.exceptionTypes }) return false
+            if (returnType != null && returnType != method.returnType) return false
+            if (isSynthetic != null && isSynthetic != method.isSynthetic) return false
+            if (isVarArgs != null && isVarArgs != method.isVarArgs) return false
+            if (isBridge != null && isBridge != method.isBridge) return false
+            if (isDefault != null && isDefault != method.isDefault) return false
+            return true
+        }
 
-    fun matches(method: Method): Boolean {
-        if (name != null && name != method.name) return false
-        if (modifiers != null && !modifiers!!.matchesModifiers(method.modifiers)) return false
-        if (annotations != null && !annotations!!.containsAllAnnotations(method.annotations)) return false
-        if (paramTypes != null && !paramTypes.contentEqualsWithoutNull(method.parameterTypes)) return false
-        if (paramCount != null && paramCount != method.parameterTypes.size) return false
-        if (exceptionTypes != null && !exceptionTypes!!.any { it in method.exceptionTypes }) return false
-        if (returnType != null && returnType != method.returnType) return false
-        if (isSynthetic != null && isSynthetic != method.isSynthetic) return false
-        if (isVarArgs != null && isVarArgs != method.isVarArgs) return false
-        if (isBridge != null && isBridge != method.isBridge) return false
-        if (isDefault != null && isDefault != method.isDefault) return false
-        return true
-    }
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is MethodMatcher) return false
+            if (!super.equals(other)) return false
 
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is MethodMatcher) return false
-        if (!super.equals(other)) return false
+            if (returnType != other.returnType) return false
+            if (isBridge != other.isBridge) return false
+            if (isDefault != other.isDefault) return false
 
-        if (returnType != other.returnType) return false
-        if (isBridge != other.isBridge) return false
-        if (isDefault != other.isDefault) return false
+            return true
+        }
 
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = super.hashCode()
-        result = 31 * result + returnType.hashCode()
-        result = 31 * result + isBridge.hashCode()
-        result = 31 * result + isDefault.hashCode()
-        return result
-    }
-}
-
-class FieldMatcher : MemberMatcher() {
-    var type: Class<*>? = null
-
-    var isEnumConstant: Boolean? = null
-
-    fun matches(field: Field): Boolean {
-        if (name != null && name != field.name) return false
-        if (modifiers != null && !modifiers!!.matchesModifiers(field.modifiers)) return false
-        if (annotations != null && !annotations!!.containsAllAnnotations(field.annotations)) return false
-        if (type != null && type != field.type) return false
-        if (isSynthetic != null && isSynthetic != field.isSynthetic) return false
-        if (isEnumConstant != null && isEnumConstant != field.isEnumConstant) return false
-        return true
+        override fun hashCode(): Int {
+            var result = super.hashCode()
+            result = 31 * result + returnType.hashCode()
+            result = 31 * result + isBridge.hashCode()
+            result = 31 * result + isDefault.hashCode()
+            return result
+        }
     }
 
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is FieldMatcher) return false
-        if (!super.equals(other)) return false
+    class FieldMatcher : MemberMatcher() {
+        var type: Class<*>? = null
 
-        if (type != other.type) return false
-        if (isEnumConstant != other.isEnumConstant) return false
+        var isEnumConstant: Boolean? = null
 
-        return true
-    }
+        fun matches(field: Field): Boolean {
+            if (name != null && name != field.name) return false
+            if (modifiers != null && !modifiers!!.matchesModifiers(field.modifiers)) return false
+            if (annotations != null && !annotations!!.containsAllAnnotations(field.annotations)) return false
+            if (type != null && type != field.type) return false
+            if (isSynthetic != null && isSynthetic != field.isSynthetic) return false
+            if (isEnumConstant != null && isEnumConstant != field.isEnumConstant) return false
+            return true
+        }
 
-    override fun hashCode(): Int {
-        var result = super.hashCode()
-        result = 31 * result + type.hashCode()
-        result = 31 * result + isEnumConstant.hashCode()
-        return result
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is FieldMatcher) return false
+            if (!super.equals(other)) return false
+
+            if (type != other.type) return false
+            if (isEnumConstant != other.isEnumConstant) return false
+
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = super.hashCode()
+            result = 31 * result + type.hashCode()
+            result = 31 * result + isEnumConstant.hashCode()
+            return result
+        }
     }
 }
 
