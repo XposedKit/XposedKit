@@ -488,20 +488,26 @@ class FieldMatcher : MemberMatcher() {
 }
 
 fun Class<*>.descriptor(): String {
-    return when {
-        isPrimitive -> Primitives.getAbbreviation(name)!!
-        isArray -> "[" + componentType!!.descriptor()
-        else -> "L${name.replace('.', '/')};"
+    if (isPrimitive) {
+        return Primitives.getAbbreviation(name)!!
     }
+
+    val name = name.replace('.', '/')
+    if (isArray) return name
+    return "L$name;"
 }
 
 fun Member.descriptor(): String {
-    var parameterTypes: Array<Class<*>>
-    var returnType: Class<*>
+    if (this is Field) {
+        return type.descriptor()
+    }
+
+    val parameterTypes: Array<Class<*>>
+    val returnType: Class<*>
     when (this) {
         is Constructor<*> -> {
             parameterTypes = this.parameterTypes
-            returnType = Void::class.javaPrimitiveType!!
+            returnType = Void.TYPE
         }
         is Method -> {
             parameterTypes = this.parameterTypes
@@ -515,22 +521,47 @@ fun Member.descriptor(): String {
 }
 
 fun Member.signature(): String {
-    var name: String
-    var parameterTypes: Array<Class<*>>
+    val name = name
+    val parameterTypes: Array<Class<*>>
     when (this) {
         is Constructor<*> -> {
-            name = "<init>"
             parameterTypes = this.parameterTypes
         }
         is Method -> {
-            name = this.name
             parameterTypes = this.parameterTypes
         }
         else -> {
             throw IllegalArgumentException("Unsupported member type: ${this::class.java.name}")
         }
     }
-    return "$name(${parameterTypes.joinToString(",") { it.name }})"
+
+    fun Class<*>.typeName(): String {
+        if (isArray) {
+            var type = this
+            var dimensions = 0
+            try {
+                do {
+                    type = type.componentType!!
+                    dimensions++
+                } while (type.isArray)
+                return type.getName() + "[]".repeat(dimensions)
+            } catch (_: Throwable) {
+            }
+        }
+
+        return this.name
+    }
+    return "$name(${parameterTypes.joinToString(",") { it.typeName() }})"
+}
+
+fun Member.dexReference(): String {
+    val name = if (this is Constructor<*>) "<init>" else name
+    var descriptor = descriptor()
+    if (this is Field) {
+        descriptor = ":$descriptor"
+    }
+
+    return "${declaringClass.descriptor()}->$name$descriptor"
 }
 
 fun <T : Any> Class<T>.allocate(): T {
