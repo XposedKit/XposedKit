@@ -265,7 +265,7 @@ JNI_OnLoad(JavaVM* vm, void*) {
     auto result = env->RegisterNatives(bridge, methods, std::size(methods));
     env->DeleteLocalRef(bridge);
     if (result != JNI_OK) {
-        return JNI_ERR;
+        return result;
     }
 
     return JNI_VERSION_1_6;

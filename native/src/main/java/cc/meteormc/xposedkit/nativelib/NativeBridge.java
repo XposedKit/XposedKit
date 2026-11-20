@@ -1,11 +1,13 @@
 package cc.meteormc.xposedkit.nativelib;
 
+import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.lang.reflect.Executable;
 import java.lang.reflect.Member;
 
+@Keep
 public class NativeBridge {
     public static boolean isLoaded = false;
     public static UnsatisfiedLinkError error;
