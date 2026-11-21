@@ -7,20 +7,20 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.properties.ReadWriteProperty
 import kotlin.reflect.KProperty
 
-class AtomicDelegate<T>(initial: T? = null) : ReadWriteProperty<Any?, T?> {
+class AtomicDelegate<T>(initial: T) : ReadWriteProperty<Any?, T> {
     private var ref = AtomicReference(initial)
 
     override fun getValue(
         thisRef: Any?,
         property: KProperty<*>
-    ): T? {
+    ): T {
         return ref.get()
     }
 
     override fun setValue(
         thisRef: Any?,
         property: KProperty<*>,
-        value: T?
+        value: T
     ) {
         ref.set(value)
     }
