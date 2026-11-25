@@ -12,9 +12,10 @@ import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 
 open class HookerContext(
-    open val classLoader: ClassLoader,
-    protected val handles: MutableList<HookHandle> = mutableListOf()
+    open val classLoader: ClassLoader
 ) {
+    val handles: MutableList<HookHandle> = mutableListOf()
+
     inline val String.clazz: Class<*>?
         get() = reflect?.type
     inline val String.reflect: Reflect<*>?
@@ -64,6 +65,11 @@ open class HookerContext(
 
     fun Class<*>.hookClinitAfter(callback: InvokeCallback): HookHandle {
         return hookClinit(HookType.AFTER, callback)
+    }
+
+    fun unhookAll() {
+        handles.forEach { it.unhook() }
+        handles.clear()
     }
 
     private fun Member.hook(type: HookType, priority: Int = InvokeCallback.PRIORITY_NORMAL, callback: InvokeCallback): HookHandle {
