@@ -46,6 +46,12 @@ class ObjectExtras private constructor(private val key: HashKey) {
                 extras
             }
         }
+
+        internal fun cleanup() {
+            synchronized(extrasMap) {
+                extrasMap.clear()
+            }
+        }
     }
 
     private val store = HashMap<String, Any?>()
@@ -57,6 +63,10 @@ class ObjectExtras private constructor(private val key: HashKey) {
 
     operator fun set(key: String, value: Any?) {
         store[key] = value
+    }
+
+    fun clear() {
+        store.clear()
     }
 
     // 一种处理哈希碰撞的解决方案 绝大多数情况下使用single就已经足够

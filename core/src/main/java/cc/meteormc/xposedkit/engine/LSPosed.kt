@@ -21,6 +21,7 @@ import cc.meteormc.xposedkit.param.PackageLoadedParam
 import cc.meteormc.xposedkit.param.ProcessLoadedParam
 import cc.meteormc.xposedkit.param.SystemServerStartingParam
 import cc.meteormc.xposedkit.util.AtomicBooleanDelegate
+import cc.meteormc.xposedkit.util.ObjectExtras
 import cc.meteormc.xposedkit.util.WeakDelegate
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
@@ -274,6 +275,7 @@ class LSPosed : Engine, XposedModule() {
 
         // 在此处完成清理操作
         appPackages.clear()
+        ObjectExtras.cleanup()
         if (NativeBridge.isLoaded) {
             NativeBridge.Cleanup()
         }
