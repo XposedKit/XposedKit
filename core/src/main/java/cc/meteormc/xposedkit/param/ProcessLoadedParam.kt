@@ -13,5 +13,10 @@ data class ProcessLoadedParam(
     data class HotReloadInfo(
         val extras: Bundle?,
         var savedData: Any?
-    )
+    ) {
+        fun <T> savedData(): T {
+            @Suppress("UNCHECKED_CAST")
+            return savedData as T
+        }
+    }
 }
